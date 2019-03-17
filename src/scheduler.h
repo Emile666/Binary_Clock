@@ -28,7 +28,7 @@
 #include <string.h>
 #include <stdio.h>
 
-#define MAX_TASKS	  (4)
+#define MAX_TASKS	  (3)
 #define MAX_MSEC      (60000)
 #define TICKS_PER_SEC (1000L)
 #define NAME_LEN         (12) 
@@ -43,17 +43,17 @@
 
 typedef struct _task_struct
 {
-	void     (* pFunction)(); // Function pointer
-	char     Name[NAME_LEN];  // Task name
-	uint16_t Period;          // Period between 2 calls in msec.
-	uint16_t Delay;           // Initial delay before Counter starts in msec.
-	uint16_t Counter;         // Running counter, is init. from Period
-	uint8_t	 Status;          // bit 1: 1=enabled ; bit 0: 1=ready to run
-	uint16_t Duration;        // Measured task-duration in clock-ticks
-	uint16_t Duration_Max;    // Max. measured task-duration
+	void     (* pFunction)(void); // Function pointer
+	char     Name[NAME_LEN];      // Task name
+	uint16_t Period;              // Period between 2 calls in msec.
+	uint16_t Delay;               // Initial delay before Counter starts in msec.
+	uint16_t Counter;             // Running counter, is init. from Period
+	uint8_t	 Status;              // bit 1: 1=enabled ; bit 0: 1=ready to run
+	uint16_t Duration;            // Measured task-duration in clock-ticks
+	uint16_t Duration_Max;        // Max. measured task-duration
 } task_struct;
 
-void    scheduler_init(void);
+void    scheduler_init(void); // clear task_list struct
 void    scheduler_isr(void);  // run-time function for scheduler
 void    dispatch_tasks(void); // run all tasks that are ready
 uint8_t add_task(void (*task_ptr)(), char *Name, uint16_t delay, uint16_t period);

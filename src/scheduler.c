@@ -52,7 +52,7 @@ void scheduler_isr(void)
 {
 	uint8_t index = 0; // index in task_list struct
 
-	while(task_list[index].pFunction)
+	while ((index < MAX_TASKS) && task_list[index].pFunction)
 	{
 		//First go through the initial delay
 		if(task_list[index].Delay > 0)
@@ -85,7 +85,7 @@ void dispatch_tasks(void)
 	uint32_t time2;
 
 	//go through the active tasks
-	while(task_list[index].pFunction)
+	while ((index < MAX_TASKS) && task_list[index].pFunction)
 	{
 		if((task_list[index].Status & (TASK_READY | TASK_ENABLED)) == (TASK_READY | TASK_ENABLED))
 		{
@@ -121,16 +121,12 @@ uint8_t add_task(void (*task_ptr)(), char *Name, uint16_t delay, uint16_t period
 	uint16_t temp1 = (uint16_t)(delay  * TICKS_PER_SEC / 1000);
 	uint16_t temp2 = (uint16_t)(period * TICKS_PER_SEC / 1000);
 
-	if (max_tasks >= MAX_TASKS)
-		return ERR_MAX_TASKS;
-		
+	if (max_tasks >= MAX_TASKS) return ERR_MAX_TASKS;
 	//go through the active tasks
-	if(task_list[index].Period != 0)
-	{
-		while(task_list[++index].Period != 0) ;
-	} // if
+	while ((index < MAX_TASKS) && task_list[index].Period) index++;
+        if (index >= MAX_TASKS) return ERR_MAX_TASKS;
 
-	if(task_list[index].Period == 0)
+	if (task_list[index].Period == 0)
 	{
 		task_list[index].pFunction    = task_ptr;       // Pointer to Function
 		task_list[index].Period       = temp2;          // Period in msec.
@@ -235,27 +231,28 @@ uint8_t set_task_time_period(uint16_t Period, char *Name)
 } // set_task_time_period()
 
 /*-----------------------------------------------------------------------------
-  Purpose  : list all tasks and send result to USB-RS232 using xputs().
-  Variables: 
-  rs232_udp: [RS232_USB, ETHERNET_UDP] Response via RS232/USB or Ethernet/Udp
- Returns  : -
+  Purpose  : list all tasks and send result to the UART.
+  Variables: -
+ Returns   : -
   ---------------------------------------------------------------------------*/
 void list_all_tasks(void)
 {
 	uint8_t index = 0;
 	char    s[50];
 
-	uart_printf("Task-Name   T(ms) Stat T(ms) M(ms)\n");
+	uart_printf("Task-Name,T(ms),Stat,T(ms),M(ms)\r\n");
 	//go through the active tasks
-	if (task_list[index].Period != 0)
+	if(task_list[index].Period != 0)
 	{
-            while (task_list[index].Period != 0)
-            {
-                sprintf(s,"%s:%d,0x%d,%d,%d\n", task_list[index].Name, 
-			  task_list[index].Period  , task_list[index].Status, 
-			  task_list[index].Duration, task_list[index].Duration_Max);
-		uart_printf(s);
-		index++;
-            } // while
+		while ((index < MAX_TASKS) && (task_list[index].Period != 0))
+		{
+                    uart_printf(task_list[index].Name);
+            
+		    sprintf(s,",%d,0x%x,%d,%d\r\n", 
+                    task_list[index].Period  , (uint16_t)task_list[index].Status, 
+					  task_list[index].Duration, task_list[index].Duration_Max);
+                    uart_printf(s);
+		    index++;
+		} // while
 	} // if
 } // list_all_tasks()

@@ -80,16 +80,16 @@ void setup_output_ports(void)
   PB_DDR     |=  (I2C_SCL | I2C_SDA); // Set as outputs
   //PB_CR2     |=  (I2C_SCL | I2C_SDA); // Set speed to 10 MHz
   
-  PC_DDR     |= DI_3V3;               // Set DI for WS2812B as output
-  PC_CR1     |= DI_3V3;               // Set DI to Push-Pull
-  PC_ODR     &= ~DI_3V3;              // Turn off DI
+  PC_DDR     |= DI_3V3 | LED3 | LED4;   // Set DI-WS2812B and LEDs as output
+  PC_CR1     |= DI_3V3;                 // Set DI to Push-Pull
+  PC_ODR     &= ~(DI_3V3 | LED3| LED4); // Turn off DI
   
-  PD_DDR     |= TX;                   // Set UART1-TX as output
-  PD_CR1     |= TX;                   // Set UART1-TX to Push-Pull
-  PD_ODR     |= TX;                   // Set TX high
-  PD_DDR     &= ~RX;                  // Set UART1-RX as input
-  PD_CR1     &= ~RX;                  // Set to floating
-  
+  PD_DDR     |= TX | LED1 | LED2;       // Set UART1-TX and LEDs as output
+  PD_CR1     |= TX;                     // Set UART1-TX to Push-Pull
+  PD_ODR     |= TX;                     // Set TX high
+  PD_ODR     &= ~(LED1 | LED2);         // LEDs off
+  PD_DDR     &= ~RX;                    // Set UART1-RX as input
+  PD_CR1     &= ~RX;                    // Set to floating
 } // setup_output_ports()
 
 /*-----------------------------------------------------------------------------
@@ -159,92 +159,55 @@ void test_pattern(void)
                 break;
         } // switch
     } // if
-    
 } // test_pattern()
 
-#define SEC_TO_LED_NR(x) (((x/12)*36)+x)
-
-uint8_t get_bottom_led_nr(uint8_t x)
+/*------------------------------------------------------------------------
+  Purpose  : Encode a byte into 2 BCD numbers.
+  Variables: x: the byte to encode
+  Returns  : the two encoded BCD numbers
+  ------------------------------------------------------------------------*/
+uint8_t encode_to_bcd(uint8_t x)
 {
-    uint8_t seg_nr = x / 12; // segment 0..4
-    uint8_t led_nr = x - 12 * seg_nr + 24;
-    led_nr += 36 * seg_nr;
-    return led_nr;
-} // get_top_led_nr()
+	uint8_t temp;
+	uint8_t retv = 0;
+		
+	temp   = x / 10;
+	retv  |= (temp & 0x0F);
+	retv <<= 4; // SHL 4
+	temp   = x - temp * 10;
+	retv  |= (temp & 0x0F);
+	return retv;
+} // encode_to_bcd()
 
 /*-----------------------------------------------------------------------------
   Purpose  : This routine creates a pattern for the LEDs and stores it in
              the arrays led_r, led_g and led_b
+             It uses the global variables seconds, minutes and hours
   Variables: bt: the byte to send
   Returns  : -
   ---------------------------------------------------------------------------*/
 void pattern_task(void)
 {
-    uint8_t hr[12]    = {0,5,10,39,44,73,78,83,112,117,146,151};
-    uint8_t sl[7]     = {74,75,76,77,78,88,100};
-    uint8_t slidx[10] = {0,1,2,3,4,4,3,2,1,0};
-    
-    uint8_t lred; // AM: green, PM: yellow
-    uint8_t i,h,bsec,esec,bmin,emin,sli;
+    uint8_t i,x;
     
     //test_pattern();
-    for (i = 0; i < NR_LEDS; i++)
-    {
-        led_g[i] = led_r[i] = led_b[i] = 0;
-    } // for i
- 
-    if (seconds == 0)
-    {
-        bsec = 0;
-        esec = 59;
-    } // if
-    else
-    {
-        bsec = 1;
-        esec = seconds;
-    } // else
-    if (minutes == 0)
-    {
-        bmin = 0;
-        emin = 59;
-    } // if
-    else
-    {
-        bmin = 1;
-        emin = minutes;
-    } // else
-        
-    for (i = bsec; i <= esec; i++)
-    {
-        led_r[get_bottom_led_nr(i)] = ((i % 5) ? 0x08 : 0x40);
-    } // for i
-    for (i = bmin; i <= emin; i++)
-    {
-        led_b[get_bottom_led_nr(i)-12] = ((i % 5) ? 0x08 : 0x40);
-    } // for i
-    if (hours > 12)
-    {
-         h    = hours - 12;
-         lred = 0x10; // yellow color for PM
-    } // if
-    else 
-    {
-        h    = hours;
-        lred = 0x00; // only green for AM
-    } // else
-    for (i = ((h == 12) ? 0 : 1); i <= h; i++)
-    {
-        led_g[hr[i]] = 0x10;
-        led_r[hr[i]] = lred;
-    } // for i
-
-    sli = slidx[slpos];
-    if (++slpos > 9) slpos = 0;
+    x = encode_to_bcd(seconds);
     for (i = 0; i < 7; i++)
-    {
-        led_g[sl[i]+sli] |= 0x08;
-        led_r[sl[i]+sli] |= 0x08;
-        led_b[sl[i]+sli] |= 0x08;
+    {   // 4 bits seconds LSB, 3 bits seconds MSB
+        if (x & (1<<i)) led_b[i] = 0x40;
+        else            led_b[i] = 0x00;
+    } // for i
+    x = encode_to_bcd(minutes);
+    for (i = 0; i < 7; i++)
+    {   // 4 bits minutes LSB, 3 bits seconds MSB
+        if (x & (1<<i)) led_g[i] = 0x40;
+        else            led_g[i] = 0x00;
+    } // for i
+    x = encode_to_bcd(hours);
+    for (i = 0; i < 6; i++)
+    {   // 4 bits hours LSB, 2 bits hours MSB
+        if (x & (1<<i)) led_r[i] = 0x40;
+        else            led_r[i] = 0x00;
     } // for i
 } // pattern_task()    
         
@@ -354,7 +317,7 @@ void execute_single_command(char *s)
 		 switch (num)
 		 {
                     case 0: // revision
-                            uart_printf("Ring-Clock V0.1\n");
+                            uart_printf("Binary Clock V0.1\n");
                             break;
                     case 1: // List all tasks
                             list_all_tasks(); 
