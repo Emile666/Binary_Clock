@@ -6,5 +6,9 @@
 - DS3231 RTC
 - SWIM debug interface
 
+# Schematic
+![schematic](img/sch_v02.png)<br>
+*Schematic of Binary Clock v02*
+
 # Development Environment
 IAR development environment for STM8 
