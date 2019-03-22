@@ -25,14 +25,16 @@
 //                                 PA3 | 10    11 | PB5      I2C-SDA
 //                                     ------------
 //-----------------------------------------------------------------------------------------------
-#define DI_3V3 (0x08) /* PC3 */
-#define IR_RCV (0x10) /* PC4 */
-#define LED3   (0x20) /* PC5 */
-#define LED4   (0x40) /* PC6 */
-#define LED1   (0x04) /* PD2 */
-#define LED2   (0x08) /* PD3 */
-#define TX     (0x20) /* PD5 */
-#define RX     (0x40) /* PD6 */
+#define I2C_SCL (0x10) /* PB4 */
+#define I2C_SDA (0x20) /* PB5 */
+#define DI_3V3  (0x08) /* PC3 */
+#define IR_RCV  (0x10) /* PC4 */
+#define LED3    (0x20) /* PC5 */
+#define LED4    (0x40) /* PC6 */
+#define LED1    (0x04) /* PD2 */
+#define LED2    (0x08) /* PD3 */
+#define TX      (0x20) /* PD5 */
+#define RX      (0x40) /* PD6 */
 
 //-----------------------------------------------------------------------------------------------
 // https://wp.josh.com/2014/05/13/ws2812-neopixels-are-not-so-finicky-once-you-get-to-know-them/

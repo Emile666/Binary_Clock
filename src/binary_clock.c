@@ -1,12 +1,16 @@
+#include <iostm8s103f3.h>
 #include "binary_clock.h"
 #include "delay.h"
 #include "scheduler.h"
 #include "i2c.h"
+#include "i2c_ds3231.h"
 #include "uart.h"
 
 extern char     rs232_inbuf[];  // RS232 input buffer
 extern uint8_t  rs232_ptr;      // index in RS232 buffer
 extern uint32_t t2_millis;      // Updated in TMR2 interrupt
+
+char bin_clk_ver[] = "Binary Clock 0.1\n";
 
 uint8_t led_r[NR_LEDS]; // Array with 8-bit red colour for all WS2812
 uint8_t led_g[NR_LEDS]; // Array with 8-bit green colour for all WS2812
@@ -317,7 +321,7 @@ void execute_single_command(char *s)
 		 switch (num)
 		 {
                     case 0: // revision
-                            uart_printf("Binary Clock V0.1\n");
+                            uart_printf(bin_clk_ver);
                             break;
                     case 1: // List all tasks
                             list_all_tasks(); 
@@ -336,9 +340,9 @@ void execute_single_command(char *s)
 			    uart_putc('\r');
                             break;
 
-		   default: uart_printf("s0 = Revision number\n");
-                            uart_printf("s1 = List all Tasks\n");
-                            uart_printf("s2 = I2C-scan\n");
+                   default: uart_printf("s0: Revision number\n");
+                            uart_printf("s1: List all Tasks\n");
+                            uart_printf("s2: I2C-scan\n");
                             break;
                  } // switch
 		 break;
@@ -371,10 +375,10 @@ void execute_single_command(char *s)
 				case 3: uart_printf("75 °C\n"); break;
                             } // switch
                             break;
-                   default: uart_printf("t0 = Set Time hh:mm:ss\n");
-                            uart_printf("t1 = Get Date and Time\n");
-                            uart_printf("t2 = Get Temperature\n");
-                            break;
+                    default: uart_printf("t0: Set Time hh:mm:ss\n");
+                             uart_printf("t1: Get Date and Time\n");
+                             uart_printf("t2: Get Temperature\n");
+                             break;
                  } // switch
                  break;
 	   
@@ -434,9 +438,9 @@ int main(void)
     initialise_system_clock(); // Set system-clock to 16 MHz
     setup_output_ports();      // Init. needed output-ports for LED and keys
     setup_timer2();            // Set Timer 2 to 1 kHz
-    i2c_init(0);               // Init. I2C-peripheral
+    i2c_init();                // Init. I2C-peripheral
     uart_init();               // Init. UART-peripheral
-    uart_printf("binary clock v01\n");
+    uart_printf(bin_clk_ver);  // Print welcome message
     
     // Initialise all tasks for the scheduler
     scheduler_init();                      // clear task_list struct
