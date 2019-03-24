@@ -18,7 +18,6 @@ uint8_t led_b[NR_LEDS]; // Array with 8-bit blue colour for all WS2812
 uint8_t seconds = 0;
 uint8_t minutes = 0;
 uint8_t hours   = 0;
-uint8_t slpos   = 0; // position of sling
 
 /*-----------------------------------------------------------------------------
   Purpose  : This is the interrupt routine for the Timer 2 Overflow handler.
@@ -80,8 +79,8 @@ void setup_timer2(void)
   ---------------------------------------------------------------------------*/
 void setup_output_ports(void)
 {
-  PB_ODR     |=  (I2C_SCL | I2C_SDA); // Must be set here, or I2C will not work
-  PB_DDR     |=  (I2C_SCL | I2C_SDA); // Set as outputs
+  PB_ODR     |=  (I2C_SCL | I2C_SDA);   // Must be set here, or I2C will not work
+  PB_DDR     |=  (I2C_SCL | I2C_SDA);   // Set as outputs
   //PB_CR2     |=  (I2C_SCL | I2C_SDA); // Set speed to 10 MHz
   
   PC_DDR     |= DI_3V3 | LED3 | LED4;   // Set DI-WS2812B and LEDs as output
@@ -204,14 +203,14 @@ void pattern_task(void)
     x = encode_to_bcd(minutes);
     for (i = 0; i < 7; i++)
     {   // 4 bits minutes LSB, 3 bits seconds MSB
-        if (x & (1<<i)) led_g[i] = 0x40;
-        else            led_g[i] = 0x00;
+        if (x & (1<<i)) led_g[i+7] = 0x40;
+        else            led_g[i+7] = 0x00;
     } // for i
     x = encode_to_bcd(hours);
     for (i = 0; i < 6; i++)
     {   // 4 bits hours LSB, 2 bits hours MSB
-        if (x & (1<<i)) led_r[i] = 0x40;
-        else            led_r[i] = 0x00;
+        if (x & (1<<i)) led_r[i+14] = 0x40;
+        else            led_r[i+14] = 0x00;
     } // for i
 } // pattern_task()    
         
@@ -228,7 +227,7 @@ void ws2812_task(void)
 {
     uint8_t i;
 
-    __disable_interrupt(); // disable IRQ for time-sensitive LED-timing
+    __disable_interrupt();   // disable IRQ for time-sensitive LED-timing
     for (i = 0; i < NR_LEDS; i++)
     {
         ws2812b_send_byte(led_g[i]); // Send one byte of Green
@@ -258,23 +257,24 @@ void clock_task(void)
     __enable_interrupt();
 } // clock_task()
 
-void print_date_and_time(void)
-{
-    char s2[40]; // Used for printing to RS232 port
-    Time p;
-    
-    ds3231_gettime(&p);
-    uart_printf("DS3231: ");
-    sprintf(s2," %d-%d-%d, %d:%d.%d\n",p.date,p.mon,p.year,p.hour,p.min,p.sec);
-    uart_printf(s2);
-} // print_date_and_time()
-
 void print_dow(uint8_t dow)
 {
     char day[8][4] = {"???","Mon","Tue","Wed","Thu","Fri","Sat","Sun"};
 
     uart_printf(day[dow]);
 } // print_dow()
+
+void print_date_and_time(void)
+{
+    char s2[40]; // Used for printing to UART
+    Time p;
+    
+    ds3231_gettime(&p);
+    uart_printf("DS3231: ");
+    print_dow(p.dow);
+    sprintf(s2," %d-%d-%d, %d:%d.%d\n",p.date,p.mon,p.year,p.hour,p.min,p.sec);
+    uart_printf(s2);
+} // print_date_and_time()
 
 /*-----------------------------------------------------------------------------
   Purpose: interpret commands which are received via the USB serial terminal:
@@ -305,15 +305,13 @@ void execute_single_command(char *s)
                             y  = atoi(s1);
                             uart_printf("Date: ");
                             print_dow(ds3231_calc_dow(d,m,y));
-                            sprintf(s2,", %d-%d-%d\n",d,m,y);
+                            sprintf(s2," %d-%d-%d\n",d,m,y);
                             uart_printf(s2);
                             ds3231_setdate(d,m,y); // write to DS3231 IC
                             break;
-                    case 1: print_date_and_time();
+                    case 1: print_date_and_time(); // Get Date & Time
                             break;
-                   default: uart_printf("Usage: d0 = Set Date dd-mm-yyyy\n");
-                            uart_printf("d1 = Get Date and Time\n");
-                            break;
+                   default: break;
                  } // switch
                  break;
   
@@ -338,12 +336,9 @@ void execute_single_command(char *s)
 				i2c_stop();
 			    } // for
 			    uart_putc('\r');
+			    uart_putc('\n');
                             break;
-
-                   default: uart_printf("s0: Revision number\n");
-                            uart_printf("s1: List all Tasks\n");
-                            uart_printf("s2: I2C-scan\n");
-                            break;
+                   default: break;
                  } // switch
 		 break;
                                         
@@ -361,7 +356,7 @@ void execute_single_command(char *s)
                             uart_printf(s2);
                             ds3231_settime(hours,minutes,seconds); // write to DS3231 IC
                             break;
-                    case 1: print_date_and_time();
+                    case 1: print_date_and_time(); // Get Date & Time
                             break;
                     case 2: // Get Temperature
                             temp = ds3231_gettemp();
@@ -375,17 +370,10 @@ void execute_single_command(char *s)
 				case 3: uart_printf("75 °C\n"); break;
                             } // switch
                             break;
-                    default: uart_printf("t0: Set Time hh:mm:ss\n");
-                             uart_printf("t1: Get Date and Time\n");
-                             uart_printf("t2: Get Temperature\n");
-                             break;
+                   default: break;
                  } // switch
                  break;
-	   
-        default: uart_printf("Possible commands: d0 dd-mm-yyyy, d1\n");
-                 uart_printf("s0, s1, s2, t0 hh:mm:ss, t1, t2\n");
-	         break;
-
+        default: break;
    } // switch
 } // execute_single_command()
 
@@ -453,6 +441,5 @@ int main(void)
     {   // background-processes
         dispatch_tasks();        // Run task-scheduler()
         rs232_command_handler(); // run command handler continuously
-        __wait_for_interrupt();  // do nothing
     } // while
 } // main()

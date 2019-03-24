@@ -32,7 +32,6 @@ bool ds3231_read_register(uint8_t reg, uint8_t *value)
             i2c_write(reg);       // write register address to read from
             i2c_rep_start(DS3231_ADR | I2C_READ);
             *value = i2c_read1(); // Read register, generate I2C stop condition
-            i2c_stop();           // close I2C bus
         } // if
 	return err;
 } // ds3231_read_register()
@@ -90,7 +89,7 @@ bool ds3231_gettime(Time *p)
             i2c_write(REG_SEC); // seconds register is first register to read
             i2c_rep_start(DS3231_ADR | I2C_READ);
             
-            i2c_readN(buf,7); 
+            i2c_readN(buf,7);                 // Read bytes and call i2c_stop()
             p->sec  = ds3231_decode(buf[0]);  // Read SECONDS register
             p->min  = ds3231_decode(buf[1]);  // Read MINUTES register
             p->hour = ds3231_decodeH(buf[2]); // Read HOURS register
@@ -104,7 +103,6 @@ bool ds3231_gettime(Time *p)
 		p->sec = p->min  = p->hour = p->year = 0; 
 		p->dow = p->date = p->mon  = 1;
 	} // else	
-	//i2c_stop(); // close I2C bus
 	return err;
 } // ds3231_gettime()
 
@@ -127,7 +125,9 @@ uint8_t ds3231_calc_dow(uint8_t date, uint8_t mon, uint16_t year)
 	- ((year + 4800L - ((14 - mon) / 12)) / 100)
 	+ ((year + 4800L - ((14 - mon) / 12)) / 400)
 	- 32044L;
-	return (JND % 7);
+        JND = JND % 7;
+        if (JND == 0) JND = 7;
+	return JND;
 } // ds3231_calc_dow()
 
 void ds3231_setdate(uint8_t date, uint8_t mon, uint16_t year)

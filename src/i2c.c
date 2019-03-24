@@ -51,7 +51,7 @@ void i2c_init(void)
     I2C_OARL   = 0x00;  // Clear the address registers
     I2C_TRISER = 17;    // Set SCL rise-time to 1000 nsec.
     I2C_ITR    = 0x00;  // Disable I2C interrupts
-	I2C_CR1    = 1;     // Configuration complete so turn the peripheral on
+    I2C_CR1    = 1;     // Configuration complete so turn the peripheral on
 } // i2c_init()
 
 /*-----------------------------------------------------------------------------
@@ -62,25 +62,23 @@ void i2c_init(void)
   ---------------------------------------------------------------------------*/
 uint8_t recv_ack_bit(void)
 {
-	uint8_t reg, ack, nack;
-	uint8_t try = 0;
+  uint8_t ack, nack;
 
   do {
-	ack  = I2C_SR1_ADDR;
-	nack = I2C_SR2_AF;
+	ack  = (I2C_SR1 & MASK_I2C_SR1_ADDR);
+	nack = (I2C_SR2 & MASK_I2C_SR2_AF);
 	i2c_delay();
-  } while (!ack && !nack && (++try < I2C_RETRIES));
-  if (try >= I2C_RETRIES)
-	  return I2C_ERROR;
-  else if (ack)
+  } while (!ack && !nack);
+  if (ack)
   {   // ACK bit received
-      reg = I2C_SR1; // Clear ADDR bit by reading I2C_SR1 and I2C_SR3
-      reg = I2C_SR3;
+      I2C_SR1; // Clear ADDR bit by reading I2C_SR1 and I2C_SR3
+      I2C_SR3;
+      I2C_CR2 |= MASK_I2C_CR2_ACK; // Set ACK-bit for further I2C communications
       return I2C_ACK;
   } // if
   else
   {   // Acknowledge Failure
-      I2C_SR2_AF = 0; // clear error bit
+      I2C_SR2 &= ~MASK_I2C_SR2_AF; // clear error bit
       return I2C_NACK;
   } // else
 } // recv_ack_bit()
@@ -93,8 +91,8 @@ uint8_t recv_ack_bit(void)
   ---------------------------------------------------------------------------*/
 uint8_t i2c_start(uint8_t address)
 {
-  I2C_CR2_START = 1;  // Generate Start condition
-  while (!I2C_SR1_SB) i2c_delay(); // Wait until Start is sent
+  I2C_CR2 |= MASK_I2C_CR2_START;  // Generate Start condition
+  while (!(I2C_SR1 & MASK_I2C_SR1_SB)) ; // Wait until Start is sent
   I2C_DR   = address; // Send the slave address and the R/W bit
   return recv_ack_bit();
 } // i2c_start()
@@ -107,13 +105,11 @@ uint8_t i2c_start(uint8_t address)
   ---------------------------------------------------------------------------*/
 void i2c_rep_start(uint8_t address)
 {
-    uint8_t reg;
-    
-    I2C_CR2_START = 1; // Generate Repeated Start condition
-    while (!I2C_SR1_SB) i2c_delay(); // Wait until Start is sent
-    I2C_DR = address;         // Send the slave address and the R/W bit
-    while (!I2C_SR1_ADDR) i2c_delay();
-    reg = I2C_SR3;           // clear ADDR bit
+    I2C_CR2 |= MASK_I2C_CR2_START;  // Generate Start condition
+    while (!(I2C_SR1 & MASK_I2C_SR1_SB)) ; // Wait until Start is sent
+    I2C_DR = address;  // Send the slave address and the R/W bit
+    while (!(I2C_SR1 & MASK_I2C_SR1_ADDR)) ;
+    I2C_SR3;     // clear ADDR bit
 } // i2c_rep_start()
 
 /*-----------------------------------------------------------------------------
@@ -124,9 +120,9 @@ void i2c_rep_start(uint8_t address)
 void i2c_stop(void)
 {
     __disable_interrupt();           // Errata workaround (Disable interrupt)
-    I2C_CR2_STOP = 1;                // generate stop here (STOP=1)
-    __enable_interrupt();	         // Errata workaround (Enable interrupt)
-    while (I2C_SR3_MSL) i2c_delay(); // wait until stop is performed
+    I2C_CR2 |= MASK_I2C_CR2_STOP;    // generate stop here (STOP=1)
+    __enable_interrupt();	     // Errata workaround (Enable interrupt)
+    while (I2C_SR3 & MASK_I2C_SR3_MSL) ; // wait until stop is performed
 } // i2c_stop()
 
 /*-----------------------------------------------------------------------------
@@ -138,7 +134,7 @@ void i2c_stop(void)
 void i2c_write(uint8_t data)
 {
 	I2C_DR = data;                    // send byte over I2C bus
-	while (!I2C_SR1_TXE) i2c_delay(); // wait until Data Register is empty
+	while (!(I2C_SR1 & MASK_I2C_SR1_TXE)) ; // wait until Data Register is empty
 } // i2c_write()
 
 /*-----------------------------------------------------------------------------
@@ -149,9 +145,9 @@ void i2c_write(uint8_t data)
   ---------------------------------------------------------------------------*/
 uint8_t i2c_read1(void)
 {
-    I2C_CR2_ACK = 0;
+    I2C_CR2 &= ~MASK_I2C_CR2_ACK;
     i2c_stop();
-    while (!I2C_SR1_RXNE) ;
+    while (!(I2C_SR1 & MASK_I2C_SR1_RXNE)) ; 
     return I2C_DR;
 } // i2c_read1()
 
@@ -166,8 +162,8 @@ void i2c_readN(uint8_t *buf, uint8_t len)
 {
     while (len-- > 1) 
     {
-        I2C_CR2_ACK = 1;
-        while (!I2C_SR1_RXNE) ;
+        I2C_CR2 |= MASK_I2C_CR2_ACK;
+        while (!(I2C_SR1 & MASK_I2C_SR1_RXNE)) ;
         *(buf++) = I2C_DR;
     } // while
     *buf = i2c_read1();

@@ -76,6 +76,10 @@ void uart_printf(char *message)
     char *ch = message;
     while (*ch)
     {
+        if (*ch == '\n')
+        {
+            uart_putc('\r'); // add CR
+        } // if
         uart_putc(*ch);
         ch++;                //  Grab the next character.
     } // while
