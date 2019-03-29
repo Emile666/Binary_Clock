@@ -18,6 +18,7 @@ uint8_t led_b[NR_LEDS]; // Array with 8-bit blue colour for all WS2812
 uint8_t seconds = 0;
 uint8_t minutes = 0;
 uint8_t hours   = 0;
+uint8_t enable_test_pattern = 0; // 1 = enable WS2812 test-pattern
 
 /*-----------------------------------------------------------------------------
   Purpose  : This is the interrupt routine for the Timer 2 Overflow handler.
@@ -73,7 +74,7 @@ void setup_timer2(void)
 
 /*-----------------------------------------------------------------------------
   Purpose  : This routine initialises all the GPIO pins of the STM8 uC.
-             See stc1000p.h for a detailed description of all pin-functions.
+             See binary_clock.h for a detailed description of all pin-functions.
   Variables: -
   Returns  : -
   ---------------------------------------------------------------------------*/
@@ -119,7 +120,8 @@ void ws2812b_send_byte(uint8_t bt)
 } // ws2812b_send_byte()
 
 /*-----------------------------------------------------------------------------
-  Purpose  : This routine sends a test pattern to all WS2812B LEDs.
+  Purpose  : This routine sends a test pattern to all WS2812B LEDs. It is 
+             called by pattern_task() every 100 msec.
   Variables: -
   Returns  : -
   ---------------------------------------------------------------------------*/
@@ -129,7 +131,7 @@ void test_pattern(void)
     uint8_t i;
 
     if (++tmr_b >= 20)
-    {
+    {   // change colour every 2 seconds
         tmr_b = 0;
         switch (cntr_b)
         {
@@ -137,25 +139,22 @@ void test_pattern(void)
                 for (i = 0; i < NR_LEDS; i++)
                 {
                     led_b[i] = 0x10;
-                    led_g[i] = 0x00;
-                    led_r[i] = 0x00;
+                    led_g[i] = led_r[i] = 0x00;
                 } // for
-                cntr_b = 1;
+                cntr_b = 1; // next colour
                 break;
             case 1: 
                 for (i = 0; i < NR_LEDS; i++)
                 {
-                    led_b[i] = 0x00;
+                    led_b[i] = led_r[i] = 0x00;
                     led_g[i] = 0x10;
-                    led_r[i] = 0x00;
                 } // for
                 cntr_b = 2;
                 break;
             case 2: 
                 for (i = 0; i < NR_LEDS; i++)
                 {
-                    led_b[i] = 0x00;
-                    led_g[i] = 0x00;
+                    led_b[i] = led_g[i] = 0x00;
                     led_r[i] = 0x10;
                 } // for
                 cntr_b = 0;
@@ -185,42 +184,65 @@ uint8_t encode_to_bcd(uint8_t x)
 /*-----------------------------------------------------------------------------
   Purpose  : This routine creates a pattern for the LEDs and stores it in
              the arrays led_r, led_g and led_b
-             It uses the global variables seconds, minutes and hours
-  Variables: bt: the byte to send
+             It uses the global variables seconds, minutes and hours and is
+             called every 100 msec. by the scheduler.
+  Variables: -
   Returns  : -
   ---------------------------------------------------------------------------*/
 void pattern_task(void)
 {
-    uint8_t i,x;
+    uint8_t x;
+    int8_t  i;
     
-    //test_pattern();
-    x = encode_to_bcd(seconds);
-    for (i = 0; i < 7; i++)
-    {   // 4 bits seconds LSB, 3 bits seconds MSB
-        if (x & (1<<i)) led_b[i] = 0x40;
-        else            led_b[i] = 0x00;
-    } // for i
-    x = encode_to_bcd(minutes);
-    for (i = 0; i < 7; i++)
-    {   // 4 bits minutes LSB, 3 bits seconds MSB
-        if (x & (1<<i)) led_g[i+7] = 0x40;
-        else            led_g[i+7] = 0x00;
-    } // for i
-    x = encode_to_bcd(hours);
-    for (i = 0; i < 6; i++)
-    {   // 4 bits hours LSB, 2 bits hours MSB
-        if (x & (1<<i)) led_r[i+14] = 0x40;
-        else            led_r[i+14] = 0x00;
-    } // for i
+    if (enable_test_pattern)
+    {   // WS2812 test-pattern
+	test_pattern(); 
+    } // if
+    else
+    {
+    	x = encode_to_bcd(seconds);
+    	for (i = 0; i <= 3; i++)
+    	{   // 4 bits seconds LSB: LED 16-19
+        	if (x & (1<<i)) led_b[i+16] = 0x40;
+        	else            led_b[i+16] = 0x00;
+    	} // for i
+    	for (i = 4; i <= 6; i++)
+    	{   // 3 bits seconds MSB: LED 13-15
+        	if (x & (1<<i)) led_b[i+9] = 0x40;
+        	else            led_b[i+9] = 0x00;
+    	} // for i
+    	x = encode_to_bcd(minutes);
+    	for (i = 0; i <= 3; i++)
+    	{   // 4 bits minutes LSB: LED 09-12
+    	    if (x & (1<<i)) led_g[i+9] = 0x40;
+    	    else            led_g[i+9] = 0x00;
+    	} // for i
+    	for (i = 4; i <= 6; i++)
+    	{   // 3 bits minutes MSB: LED 06-08
+    	    if (x & (1<<i)) led_g[i+2] = 0x40;
+    	    else            led_g[i+2] = 0x00;
+    	} // for i
+    	x = encode_to_bcd(hours);
+    	for (i = 0; i <= 3; i++)
+    	{   // 4 bits hours LSB: LED 02-05
+    	    if (x & (1<<i)) led_r[i+2] = 0x40;
+    	    else            led_r[i+2] = 0x00;
+    	} // for i
+    	for (i = 4; i <= 5; i++)
+    	{   // 4 bits hours MSB: LED 00-01
+    	    if (x & (1<<i)) led_r[i-4] = 0x40;
+    	    else            led_r[i-4] = 0x00;
+    	} // for i
+    } // else
 } // pattern_task()    
         
 /*-----------------------------------------------------------------------------
   Purpose  : This routine sends the RGB-bytes for every LED to the WS2812B
-             LED string.
+             LED string. It is called every 100 msec. by the scheduler.
   Variables: 
-      led_g: the green byte array
-      led_r: the red byte array
-      led_b: the blue byte array
+      led_g: the (global) green byte array
+      led_r: the (global) red byte array
+      led_b: the (global) blue byte array
   Returns  : -
   ---------------------------------------------------------------------------*/
 void ws2812_task(void)
@@ -238,7 +260,9 @@ void ws2812_task(void)
 } // ws2812_task()
 
 /*-----------------------------------------------------------------------------
-  Purpose  : This routine calculates seconds, minutes and hours
+  Purpose  : This routine reads the date and time info from the DS3231 RTC and
+             stores this info into the global variables seconds, minutes and
+             hours.
   Variables: 
     seconds: global variable [0..59]
     minutes: global variable [0..59]
@@ -257,6 +281,12 @@ void clock_task(void)
     __enable_interrupt();
 } // clock_task()
 
+/*-----------------------------------------------------------------------------
+  Purpose  : This routine prints the day-of-week to the uart
+  Variables: 
+        dow: [0..7], 1=Monday, 7 = Sunday
+  Returns  : -
+  ---------------------------------------------------------------------------*/
 void print_dow(uint8_t dow)
 {
     char day[8][4] = {"???","Mon","Tue","Wed","Thu","Fri","Sat","Sun"};
@@ -264,6 +294,12 @@ void print_dow(uint8_t dow)
     uart_printf(day[dow]);
 } // print_dow()
 
+/*-----------------------------------------------------------------------------
+  Purpose  : This routine reads the time and date from the DS3231 RTC and 
+             prints this info to the uart.
+  Variables: -
+  Returns  : -
+  ---------------------------------------------------------------------------*/
 void print_date_and_time(void)
 {
     char s2[40]; // Used for printing to UART
@@ -275,6 +311,27 @@ void print_date_and_time(void)
     sprintf(s2," %d-%d-%d, %d:%d.%d\n",p.date,p.mon,p.year,p.hour,p.min,p.sec);
     uart_printf(s2);
 } // print_date_and_time()
+
+/*-----------------------------------------------------------------------------
+  Purpose: This functions sets or reset the colon leds of the binary clock.
+           There are 4 leds and they are coded as:
+                 LED1     LED3
+                LED2     LED4
+  Variables: 
+       leds: bit 0: LED1 ; bit 1: LED2 ; bit 2: LED3 ; bit 3: LED4
+  Returns  : -
+  ---------------------------------------------------------------------------*/
+void set_colon_leds(uint8_t leds)
+{
+	if (leds & 0x01) PD_ODR |=  LED1;
+	else             PD_ODR &= ~LED1;
+	if (leds & 0x02) PD_ODR |=  LED2;
+	else             PD_ODR &= ~LED2;
+	if (leds & 0x04) PC_ODR |=  LED3;
+	else             PC_ODR &= ~LED3;
+	if (leds & 0x08) PC_ODR |=  LED4;
+	else             PC_ODR &= ~LED4;
+} // set_colon_leds()
 
 /*-----------------------------------------------------------------------------
   Purpose: interpret commands which are received via the USB serial terminal:
@@ -315,6 +372,10 @@ void execute_single_command(char *s)
                  } // switch
                  break;
   
+	case 'l': // Switch colon leds
+		 set_colon_leds(num);
+		 break;
+
 	case 's': // System commands
 		 switch (num)
 		 {
@@ -373,6 +434,9 @@ void execute_single_command(char *s)
                    default: break;
                  } // switch
                  break;
+	case 'w': // WS2812 test-pattern command
+		 enable_test_pattern = num; // 1 = enable test-pattern
+		 break;
         default: break;
    } // switch
 } // execute_single_command()
