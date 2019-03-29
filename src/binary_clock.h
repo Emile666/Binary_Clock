@@ -13,12 +13,12 @@
 // 
 //                                      STM8S103F3
 //                                     ------------
-//                                 PD4 | 1     20 | PD3/AIN4 LED colon lower left
-//                      UART1-TX   PD5 | 2     19 | PD2/AIN3 LED colon upper left
+//                                 PD4 | 1     20 | PD3/AIN4 LED2 colon lower left
+//                      UART1-TX   PD5 | 2     19 | PD2/AIN3 LED1 colon upper left
 //                      UART1-RX   PD6 | 3     18 | PD1      SWIM
 //                                nRST | 4     17 | PC7      
-//                                 PA1 | 5     16 | PC6      LED colon lower right
-//                                 PA2 | 6     15 | PC5      LED colon upper right
+//                                 PA1 | 5     16 | PC6      LED4 colon lower right
+//                                 PA2 | 6     15 | PC5      LED3 colon upper right
 //                                 GND | 7     14 | PC4      IR_RCV
 //                                VCAP | 8     13 | PC3      DI_3V3
 //                                 VCC | 9     12 | PB4      I2C-SCL

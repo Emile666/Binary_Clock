@@ -84,12 +84,12 @@ void setup_output_ports(void)
   PB_DDR     |=  (I2C_SCL | I2C_SDA);   // Set as outputs
   //PB_CR2     |=  (I2C_SCL | I2C_SDA); // Set speed to 10 MHz
   
-  PC_DDR     |= DI_3V3 | LED3 | LED4;   // Set DI-WS2812B and LEDs as output
-  PC_CR1     |= DI_3V3;                 // Set DI to Push-Pull
-  PC_ODR     &= ~(DI_3V3 | LED3| LED4); // Turn off DI
+  PC_DDR     |= DI_3V3 | LED3 | LED4;   // Set as output
+  PC_CR1     |= DI_3V3 | LED3 | LED4;   // Set to Push-Pull
+  PC_ODR     &= ~(DI_3V3 | LED3| LED4); // Turn off outputs
   
-  PD_DDR     |= TX | LED1 | LED2;       // Set UART1-TX and LEDs as output
-  PD_CR1     |= TX;                     // Set UART1-TX to Push-Pull
+  PD_DDR     |= TX | LED1 | LED2;       // Set as output
+  PD_CR1     |= TX | LED1 | LED2;       // Set to Push-Pull
   PD_ODR     |= TX;                     // Set TX high
   PD_ODR     &= ~(LED1 | LED2);         // LEDs off
   PD_DDR     &= ~RX;                    // Set UART1-RX as input
@@ -163,6 +163,38 @@ void test_pattern(void)
     } // if
 } // test_pattern()
 
+/*-----------------------------------------------------------------------------
+  Purpose: This functions sets or reset the colon leds of the binary clock.
+           There are 4 leds and they are coded as:
+                 LED1     LED3
+                LED2     LED4
+  Variables: 
+       leds: bit 0: LED1 ; bit 1: LED2 ; bit 2: LED3 ; bit 3: LED4
+  Returns  : -
+  ---------------------------------------------------------------------------*/
+void set_colon_leds(uint8_t leds)
+{
+	if (leds & 0x01) PD_ODR |=  LED1;
+	else             PD_ODR &= ~LED1;
+	if (leds & 0x02) PD_ODR |=  LED2;
+	else             PD_ODR &= ~LED2;
+	if (leds & 0x04) PC_ODR |=  LED3;
+	else             PC_ODR &= ~LED3;
+	if (leds & 0x08) PC_ODR |=  LED4;
+	else             PC_ODR &= ~LED4;
+} // set_colon_leds()
+
+uint8_t get_colon_leds(void)
+{
+    uint8_t retv = 0;
+    
+    if (PD_IDR & LED1) retv |= 0x01;
+    if (PD_IDR & LED2) retv |= 0x02;
+    if (PC_IDR & LED3) retv |= 0x04;
+    if (PC_IDR & LED4) retv |= 0x08;
+    return retv;
+} // get_colon_leds()
+
 /*------------------------------------------------------------------------
   Purpose  : Encode a byte into 2 BCD numbers.
   Variables: x: the byte to encode
@@ -191,8 +223,8 @@ uint8_t encode_to_bcd(uint8_t x)
   ---------------------------------------------------------------------------*/
 void pattern_task(void)
 {
-    uint8_t x;
-    int8_t  i;
+    uint8_t x,i;
+    static uint8_t colon_tmr = 0;
     
     if (enable_test_pattern)
     {   // WS2812 test-pattern
@@ -233,6 +265,13 @@ void pattern_task(void)
     	    if (x & (1<<i)) led_r[i-4] = 0x40;
     	    else            led_r[i-4] = 0x00;
     	} // for i
+        if (++colon_tmr == 5)
+        {
+            colon_tmr = 0;
+            if (get_colon_leds() == 0x0C)
+                 set_colon_leds(0x03);
+            else set_colon_leds(0x0C);
+        }
     } // else
 } // pattern_task()    
         
@@ -311,27 +350,6 @@ void print_date_and_time(void)
     sprintf(s2," %d-%d-%d, %d:%d.%d\n",p.date,p.mon,p.year,p.hour,p.min,p.sec);
     uart_printf(s2);
 } // print_date_and_time()
-
-/*-----------------------------------------------------------------------------
-  Purpose: This functions sets or reset the colon leds of the binary clock.
-           There are 4 leds and they are coded as:
-                 LED1     LED3
-                LED2     LED4
-  Variables: 
-       leds: bit 0: LED1 ; bit 1: LED2 ; bit 2: LED3 ; bit 3: LED4
-  Returns  : -
-  ---------------------------------------------------------------------------*/
-void set_colon_leds(uint8_t leds)
-{
-	if (leds & 0x01) PD_ODR |=  LED1;
-	else             PD_ODR &= ~LED1;
-	if (leds & 0x02) PD_ODR |=  LED2;
-	else             PD_ODR &= ~LED2;
-	if (leds & 0x04) PC_ODR |=  LED3;
-	else             PC_ODR &= ~LED3;
-	if (leds & 0x08) PC_ODR |=  LED4;
-	else             PC_ODR &= ~LED4;
-} // set_colon_leds()
 
 /*-----------------------------------------------------------------------------
   Purpose: interpret commands which are received via the USB serial terminal:
