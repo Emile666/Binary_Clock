@@ -63,7 +63,14 @@
 // For the binary clock, this is a total of 20
 //-------------------------------------------------
 #define NR_LEDS (20)                    
-                         
+
+//-------------------------------------------------
+// Constants for the independent watchdog (IWDG)
+//-------------------------------------------------
+#define IWDG_KR_KEY_ENABLE  (0xCC)
+#define IWDG_KR_KEY_REFRESH (0xAA)
+#define IWDG_KR_KEY_ACCESS  (0x55)
+
 void print_date_and_time(void);
 void print_dow(uint8_t dow);
 void execute_single_command(char *s);

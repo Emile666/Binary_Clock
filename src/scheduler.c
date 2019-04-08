@@ -240,7 +240,7 @@ void list_all_tasks(void)
 	uint8_t index = 0;
 	char    s[50];
 
-	uart_printf("Task-Name,T(ms),Stat,T(ms),M(ms)\r\n");
+	uart_printf("Task-Name,T(ms),Stat,T(ms),M(ms)\n");
 	//go through the active tasks
 	if(task_list[index].Period != 0)
 	{
@@ -248,7 +248,7 @@ void list_all_tasks(void)
 		{
                     uart_printf(task_list[index].Name);
             
-		    sprintf(s,",%d,0x%x,%d,%d\r\n", 
+		    sprintf(s,",%d,0x%x,%d,%d\n", 
                     task_list[index].Period  , (uint16_t)task_list[index].Status, 
 					  task_list[index].Duration, task_list[index].Duration_Max);
                     uart_printf(s);

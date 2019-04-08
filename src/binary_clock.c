@@ -10,7 +10,7 @@ extern char     rs232_inbuf[];  // RS232 input buffer
 extern uint8_t  rs232_ptr;      // index in RS232 buffer
 extern uint32_t t2_millis;      // Updated in TMR2 interrupt
 
-char bin_clk_ver[] = "Binary Clock 0.1\n";
+char bin_clk_ver[] = "Binary Clock v0.1\n";
 
 uint8_t led_r[NR_LEDS]; // Array with 8-bit red colour for all WS2812
 uint8_t led_g[NR_LEDS]; // Array with 8-bit green colour for all WS2812
@@ -19,6 +19,7 @@ uint8_t seconds = 0;
 uint8_t minutes = 0;
 uint8_t hours   = 0;
 uint8_t enable_test_pattern = 0; // 1 = enable WS2812 test-pattern
+uint8_t watchdog_test       = 0; // 1 = watchdog test modus
 
 /*-----------------------------------------------------------------------------
   Purpose  : This is the interrupt routine for the Timer 2 Overflow handler.
@@ -224,7 +225,7 @@ uint8_t encode_to_bcd(uint8_t x)
 void pattern_task(void)
 {
     uint8_t x,i;
-    static uint8_t colon_tmr = 0;
+    //static uint8_t colon_tmr = 0;
     
     if (enable_test_pattern)
     {   // WS2812 test-pattern
@@ -265,13 +266,13 @@ void pattern_task(void)
     	    if (x & (1<<i)) led_r[i-4] = 0x40;
     	    else            led_r[i-4] = 0x00;
     	} // for i
-        if (++colon_tmr == 5)
-        {
-            colon_tmr = 0;
-            if (get_colon_leds() == 0x0C)
-                 set_colon_leds(0x03);
-            else set_colon_leds(0x0C);
-        }
+//        if (++colon_tmr == 5)
+//        {
+//            colon_tmr = 0;
+//            if (get_colon_leds() == 0x0C)
+//                 set_colon_leds(0x03);
+//            else set_colon_leds(0x0C);
+//        }
     } // else
 } // pattern_task()    
         
@@ -296,6 +297,8 @@ void ws2812_task(void)
         ws2812b_send_byte(led_b[i]); // Send one byte of Blue
     } // for i
     __enable_interrupt(); // enable IRQ again
+    if (!watchdog_test)   // only refresh when watchdog_test == 0 (X0 command)
+        IWDG_KR = IWDG_KR_KEY_REFRESH;   // Refresh watchdog (reset after 500 msec.)
 } // ws2812_task()
 
 /*-----------------------------------------------------------------------------
@@ -368,7 +371,7 @@ void execute_single_command(char *s)
    
    switch (s[0])
    {
-	case 'd': // 0 = Set Date, 1 = Get Date
+	case 'd': // Set Date, 1 = Get Date
 		 switch (num)
 		 {
                     case 0: // Set Date
@@ -384,7 +387,31 @@ void execute_single_command(char *s)
                             uart_printf(s2);
                             ds3231_setdate(d,m,y); // write to DS3231 IC
                             break;
-                    case 1: print_date_and_time(); // Get Date & Time
+                    case 1: // Set Time
+                            s1      = strtok(&s[3],":-.");
+                            hours   = atoi(s1);
+                            s1      = strtok(NULL ,":-.");
+                            minutes = atoi(s1);
+                            s1      = strtok(NULL ,":-.");
+                            seconds = atoi(s1);
+                            sprintf(s2,"Time: %d:%d:%d\n",hours,minutes,seconds);
+                            uart_printf(s2);
+                            ds3231_settime(hours,minutes,seconds); // write to DS3231 IC
+                            break;
+                    case 2: // Get Date & Time
+                            print_date_and_time(); 
+                            break;
+                    case 3: // Get Temperature
+                            temp = ds3231_gettemp();
+                            sprintf(s2,"DS3231: %d.",temp>>2);
+                            uart_printf(s2);
+                            switch (temp & 0x03)
+                            {
+				case 0: uart_printf("00 °C\n"); break;
+				case 1: uart_printf("25 °C\n"); break;
+				case 2: uart_printf("50 °C\n"); break;
+				case 3: uart_printf("75 °C\n"); break;
+                            } // switch
                             break;
                    default: break;
                  } // switch
@@ -421,39 +448,12 @@ void execute_single_command(char *s)
                  } // switch
 		 break;
                                         
-        case 't': // 0 = Set Time, 1 = Get Time, 2 = Get Temperature
-		 switch (num)
-		 {
-                    case 0: // Set Time
-                            s1      = strtok(&s[3],":-.");
-                            hours   = atoi(s1);
-                            s1      = strtok(NULL ,":-.");
-                            minutes = atoi(s1);
-                            s1      = strtok(NULL ,":-.");
-                            seconds = atoi(s1);
-                            sprintf(s2,"Time: %d:%d:%d\n",hours,minutes,seconds);
-                            uart_printf(s2);
-                            ds3231_settime(hours,minutes,seconds); // write to DS3231 IC
-                            break;
-                    case 1: print_date_and_time(); // Get Date & Time
-                            break;
-                    case 2: // Get Temperature
-                            temp = ds3231_gettemp();
-                            sprintf(s2,"DS3231: %d.",temp>>2);
-                            uart_printf(s2);
-                            switch (temp & 0x03)
-                            {
-				case 0: uart_printf("00 °C\n"); break;
-				case 1: uart_printf("25 °C\n"); break;
-				case 2: uart_printf("50 °C\n"); break;
-				case 3: uart_printf("75 °C\n"); break;
-                            } // switch
-                            break;
-                   default: break;
-                 } // switch
-                 break;
 	case 'w': // WS2812 test-pattern command
 		 enable_test_pattern = num; // 1 = enable test-pattern
+		 break;
+
+        case 'x': // Debug watchdog command
+		 watchdog_test = num; // 1 = enable test-pattern
 		 break;
         default: break;
    } // switch
@@ -498,6 +498,21 @@ void rs232_command_handler(void)
 } // rs232_command_handler()
 
 /*-----------------------------------------------------------------------------
+  Purpose  : This functions initializes the independent watchdog (IWDG) and 
+             sets the watchdog timeout to the maximum of T = 512 msec.
+  Variables: -
+  Returns  : -
+  ---------------------------------------------------------------------------*/
+void init_watchdog(void)
+{
+	IWDG_KR  = IWDG_KR_KEY_ENABLE;  // start the IWDG
+	IWDG_KR  = IWDG_KR_KEY_ACCESS;  // enable access to IWDG_PR and IWDG_RLR registers
+	IWDG_PR  = 0x05;                // prescaler divider 128
+	IWDG_RLR = 0xFF;	        // Reload register to maximum
+	IWDG_KR  = IWDG_KR_KEY_REFRESH; // reset the IWDG
+} // init_watchdog()
+
+/*-----------------------------------------------------------------------------
   Purpose  : This is the main entry-point for the program
   Variables: -
   Returns  : -
@@ -513,10 +528,11 @@ int main(void)
     uart_printf(bin_clk_ver);  // Print welcome message
     
     // Initialise all tasks for the scheduler
-    scheduler_init();                      // clear task_list struct
+    scheduler_init();                          // clear task_list struct
     add_task(pattern_task, "PTRN"  , 0,  100); // every 100 msec.
     add_task(ws2812_task , "WS2812",50,  100); // every 100 msec.
     add_task(clock_task  , "CLK"   ,80, 1000); // every second
+    init_watchdog();                           // init. the IWDG watchdog
     __enable_interrupt();
 
     while (1)
