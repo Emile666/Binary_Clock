@@ -407,10 +407,10 @@ void execute_single_command(char *s)
                             uart_printf(s2);
                             switch (temp & 0x03)
                             {
-				case 0: uart_printf("00 °C\n"); break;
-				case 1: uart_printf("25 °C\n"); break;
-				case 2: uart_printf("50 °C\n"); break;
-				case 3: uart_printf("75 °C\n"); break;
+				case 0: uart_printf("00 C\n"); break;
+				case 1: uart_printf("25 C\n"); break;
+				case 2: uart_printf("50 C\n"); break;
+				case 3: uart_printf("75 C\n"); break;
                             } // switch
                             break;
                    default: break;
@@ -441,7 +441,6 @@ void execute_single_command(char *s)
 				} // if
 				i2c_stop();
 			    } // for
-			    uart_putc('\r');
 			    uart_putc('\n');
                             break;
                    default: break;
@@ -450,10 +449,17 @@ void execute_single_command(char *s)
                                         
 	case 'w': // WS2812 test-pattern command
 		 enable_test_pattern = num; // 1 = enable test-pattern
+                 if (!num)
+                 {  // clear all leds when finished with test-pattern
+                    for (i = 0; i < NR_LEDS; i++)
+                    {
+                        led_g[i] = led_r[i] = led_b[i] = 0x00;
+                    } // for i
+                 } // if
 		 break;
 
         case 'x': // Debug watchdog command
-		 watchdog_test = num; // 1 = enable test-pattern
+		 watchdog_test = num; // 1 = watchdog test => reset STM8
 		 break;
         default: break;
    } // switch
