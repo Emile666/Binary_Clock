@@ -71,6 +71,11 @@
 #define IWDG_KR_KEY_REFRESH (0xAA)
 #define IWDG_KR_KEY_ACCESS  (0x55)
 
+//-------------------------------------------------
+// Constants for the Eeprom
+//-------------------------------------------------
+#define EEP_LED_INTENSITY (0x10)
+                         
 void print_date_and_time(void);
 void print_dow(uint8_t dow);
 void execute_single_command(char *s);

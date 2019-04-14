@@ -5,6 +5,7 @@
 #include "i2c.h"
 #include "i2c_ds3231.h"
 #include "uart.h"
+#include "eep.h"
 
 extern uint32_t t2_millis;      // Updated in TMR2 interrupt
 
@@ -20,6 +21,7 @@ uint8_t minutes = 0;
 uint8_t hours   = 0;
 uint8_t enable_test_pattern = 0; // 1 = enable WS2812 test-pattern
 uint8_t watchdog_test       = 0; // 1 = watchdog test modus
+uint8_t led_intensity;           // Intensity of WS2812 LEDs
 
 /*-----------------------------------------------------------------------------
   Purpose  : This is the interrupt routine for the Timer 2 Overflow handler.
@@ -236,34 +238,34 @@ void pattern_task(void)
     	x = encode_to_bcd(seconds);
     	for (i = 0; i <= 3; i++)
     	{   // 4 bits seconds LSB: LED 16-19
-        	if (x & (1<<i)) led_b[i+16] = 0x40;
+        	if (x & (1<<i)) led_b[i+16] = led_intensity;
         	else            led_b[i+16] = 0x00;
     	} // for i
     	for (i = 4; i <= 6; i++)
     	{   // 3 bits seconds MSB: LED 13-15
-        	if (x & (1<<i)) led_b[i+9] = 0x40;
+        	if (x & (1<<i)) led_b[i+9] = led_intensity;
         	else            led_b[i+9] = 0x00;
     	} // for i
     	x = encode_to_bcd(minutes);
     	for (i = 0; i <= 3; i++)
     	{   // 4 bits minutes LSB: LED 09-12
-    	    if (x & (1<<i)) led_g[i+9] = 0x40;
+    	    if (x & (1<<i)) led_g[i+9] = led_intensity;
     	    else            led_g[i+9] = 0x00;
     	} // for i
     	for (i = 4; i <= 6; i++)
     	{   // 3 bits minutes MSB: LED 06-08
-    	    if (x & (1<<i)) led_g[i+2] = 0x40;
+    	    if (x & (1<<i)) led_g[i+2] = led_intensity;
     	    else            led_g[i+2] = 0x00;
     	} // for i
     	x = encode_to_bcd(hours);
     	for (i = 0; i <= 3; i++)
     	{   // 4 bits hours LSB: LED 02-05
-    	    if (x & (1<<i)) led_r[i+2] = 0x40;
+    	    if (x & (1<<i)) led_r[i+2] = led_intensity;
     	    else            led_r[i+2] = 0x00;
     	} // for i
     	for (i = 4; i <= 5; i++)
     	{   // 4 bits hours MSB: LED 00-01
-    	    if (x & (1<<i)) led_r[i-4] = 0x40;
+    	    if (x & (1<<i)) led_r[i-4] = led_intensity;
     	    else            led_r[i-4] = 0x00;
     	} // for i
 //        if (++colon_tmr == 5)
@@ -417,6 +419,14 @@ void execute_single_command(char *s)
                  } // switch
                  break;
   
+	case 'i': // Set intensity of WS2812 LEDs between 1..255
+		 if (num > 0)
+                 {
+                     led_intensity = num;
+                     eeprom_write_config(EEP_LED_INTENSITY,led_intensity);
+                 } // if
+		 break;
+
 	case 'l': // Switch colon leds
 		 set_colon_leds(num);
 		 break;
@@ -458,9 +468,6 @@ void execute_single_command(char *s)
                  } // if
 		 break;
 
-        case 'x': // Debug watchdog command
-		 watchdog_test = num; // 1 = watchdog test => reset STM8
-		 break;
         default: break;
    } // switch
 } // execute_single_command()
@@ -480,7 +487,6 @@ void rs232_command_handler(void)
     ch = tolower(uart_getc()); // get character as lowercase
     switch (ch)
 	{
-            case 255 : uart_putc('.');
             case '\n': break;
             case '\r': cmd_rcvd  = 1;
 		       rs232_inbuf[rs232_ptr] = '\0';
@@ -532,6 +538,12 @@ int main(void)
     i2c_init();                // Init. I2C-peripheral
     uart_init();               // Init. UART-peripheral
     uart_printf(bin_clk_ver);  // Print welcome message
+    led_intensity = (uint8_t)eeprom_read_config(EEP_LED_INTENSITY);
+    if (!led_intensity)
+    {   // First time power-up: eeprom value is 0x00
+        led_intensity = 0x10;
+        eeprom_write_config(EEP_LED_INTENSITY,led_intensity);
+    } // if
     
     // Initialise all tasks for the scheduler
     scheduler_init();                          // clear task_list struct

@@ -1616,6 +1616,12 @@
         <name>$PROJ_DIR$\delay.h</name>
     </file>
     <file>
+        <name>$PROJ_DIR$\eep.c</name>
+    </file>
+    <file>
+        <name>$PROJ_DIR$\eep.h</name>
+    </file>
+    <file>
         <name>$PROJ_DIR$\i2c.c</name>
     </file>
     <file>
