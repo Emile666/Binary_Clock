@@ -8,26 +8,84 @@
 //  http://creativecommons.org/licenses/by-sa/3.0/legalcode
 //
 #include <stdio.h>
+#include "delay.h"
 #include "uart.h"
+#include "ring_buffer.h"
 
-char    rs232_inbuf[UART_BUFLEN];     // buffer for RS232 commands
-uint8_t rs232_ptr = 0;                // index in RS232 buffer
+// buffers for use with the ring buffer (belong to the USART)
+bool     ovf_buf_in; // true = input buffer overflow
+uint16_t isr_cnt = 0;
 
+struct ring_buffer ring_buffer_out;
+struct ring_buffer ring_buffer_in;
+uint8_t            out_buffer[TX_BUF_SIZE];
+uint8_t            in_buffer[RX_BUF_SIZE];
+
+//-----------------------------------------------------------------------------
+// UART Transmit complete Interrupt.
 //
-//  Setup the UART to run at 115200 baud, no parity, one stop bit, 8 data bits.
-//  Important: This relies upon the system-clock being set to run at 16 MHz.
-//
+// This interrupt will be executed when the TXE (Transmit Data Register Empty)
+// bit in UART1_SR is set. The TXE bit is set by hardware when the contents of 
+// the TDR register has been transferred into the shift register. An interrupt 
+// is generated if the TIEN bit =1 in the UART_CR1 register. It is cleared by a
+// write to the UART_DR register.
+//-----------------------------------------------------------------------------
+#pragma vector=UART1_T_TXE_vector
+__interrupt void UART_TX_IRQHandler()
+{
+	if (!ring_buffer_is_empty(&ring_buffer_out))
+	{   // if there is data in the ring buffer, fetch it and send it
+		UART1_DR = ring_buffer_get(&ring_buffer_out);
+	} // if
+    else
+    {   // no more data to send, turn off interrupt
+        UART1_CR2_TIEN = 0;
+    } // else
+} /* UART_TX_IRQHandler() */
+
+//-----------------------------------------------------------------------------
+// UART Receive Complete Interrupt.
+
+// This interrupt will be executed when the RXNE (Read Data-Register Not Empty)
+// bit in UART1_SR is set. This bit is set by hardware when the contents of the 
+// RDR shift register has been transferred to the UART1_DR register. An interrupt 
+// is generated if RIEN=1 in the UART1_CR2 register. It is cleared by a read to 
+// the UART1_DR register. It can also be cleared by writing 0.
+//-----------------------------------------------------------------------------
+#pragma vector=UART1_R_RXNE_vector
+__interrupt void UART_RX_IRQHandler(void)
+{
+	volatile uint8_t ch;
+	
+	if (!ring_buffer_is_full(&ring_buffer_in))
+	{
+		ring_buffer_put(&ring_buffer_in, UART1_DR);
+		ovf_buf_in = false;
+	} // if
+	else
+	{
+		ch = UART1_DR; // clear RXNE flag
+		ovf_buf_in = true;
+	} // else
+	isr_cnt++;
+} /* UART_RX_IRQHandler() */
+
+/*------------------------------------------------------------------
+  Purpose  : This function initializes the UART to 115200,N,8,1
+             Master clock is 16 MHz, baud-rate is 115200 Baud.
+  Variables: -
+  Returns  : -
+  ------------------------------------------------------------------*/
 void uart_init(void)
 {
     //
     //  Clear the Idle Line Detected bit in the status register by a read
     //  to the UART1_SR register followed by a Read to the UART1_DR register.
     //
-    unsigned char tmp = UART1_SR;
+    uint8_t tmp = UART1_SR;
     tmp = UART1_DR;
-    //
+
     //  Reset the UART registers to the reset values.
-    //
     UART1_CR1 = 0;
     UART1_CR2 = 0;
     UART1_CR4 = 0;
@@ -35,45 +93,63 @@ void uart_init(void)
     UART1_CR5 = 0;
     UART1_GTR = 0;
     UART1_PSCR = 0;
-    //
+
+    // initialize the in and out buffer for the UART
+    ring_buffer_out = ring_buffer_init(out_buffer, TX_BUF_SIZE);
+    ring_buffer_in  = ring_buffer_init(in_buffer , RX_BUF_SIZE);
+
     //  Now setup the port to 115200,n,8,1.
-    //
-    UART1_CR1_M = 0;        //  8 Data bits.
+    UART1_CR1_M    = 0;     //  8 Data bits.
     UART1_CR1_PCEN = 0;     //  Disable parity.
     UART1_CR3_STOP = 0;     //  1 stop bit.
-    UART1_BRR2 = 0x0b;      //  Set the baud rate registers to 115200 baud
-    UART1_BRR1 = 0x08;      //  based upon a 16 MHz system clock.
-    //
+    UART1_BRR2     = 0x0b;  //  Set the baud rate registers to 115200 baud
+    UART1_BRR1     = 0x08;  //  based upon a 16 MHz system clock.
+
     //  Disable the transmitter and receiver.
-    //
     UART1_CR2_TEN = 0;      //  Disable transmit.
     UART1_CR2_REN = 0;      //  Disable receive.
-    //
+
     //  Set the clock polarity, clock phase and last bit clock pulse.
-    //
     UART1_CR3_CPOL = 0;
     UART1_CR3_CPHA = 0;
     UART1_CR3_LBCL = 0;
-    //
+
     //  Turn on the UART transmit, receive and the UART clock.
-    //
-    UART1_CR2_TEN = 1;
-    UART1_CR2_REN = 1;
+    UART1_CR2_TIEN = 1; // Enable Transmit interrupt
+    UART1_CR2_RIEN = 1; // Enable Receive interrupt
+    UART1_CR2_TEN  = 1; // Enable Transmitter
+    UART1_CR2_REN  = 1; // Enable Receiver
     UART1_CR3_CKEN = 0; // set to 0 or receive will not work!!
 } // uart_init()
 
-void uart_putc(char ch)
+/*------------------------------------------------------------------
+  Purpose  : This function writes one data-byte to the uart.	
+  Variables: ch: the byte to send to the uart.
+  Returns  : -
+  ------------------------------------------------------------------*/
+void uart_putc(uint8_t ch)
 {    
-     UART1_DR = (unsigned char)ch;     //  Put the next character into the data transmission register.
-     while (UART1_SR_TXE == 0);        //  Wait for transmission to complete.
+    // At 19200 Baud, sending 1 byte takes a max. of 0.52 msec.
+    while (ring_buffer_is_full(&ring_buffer_out)) delay_msec(1);
+    __disable_interrupt(); // Disable interrupts to get exclusive access to ring_buffer_out
+    if (ring_buffer_is_empty(&ring_buffer_out))
+    {
+        UART1_CR2_TIEN = 1; // First data in buffer, enable data ready interrupt
+    } // if
+    ring_buffer_put(&ring_buffer_out, ch); // Put data in buffer
+    __enable_interrupt(); // Re-enable interrupts
 } // uart_putc()
 
-//
-//  Send the message in the string to UART1.
-//
-void uart_printf(char *message)
+/*------------------------------------------------------------------
+  Purpose  : This function writes a string to the UART, using
+             the uart_putc() routine.
+  Variables:
+         s : The string to write to serial port 0
+  Returns  : the number of characters written
+  ------------------------------------------------------------------*/
+void uart_printf(char *s)
 {
-    char *ch = message;
+    char *ch = s;
     while (*ch)
     {
         if (*ch == '\n')
@@ -85,13 +161,24 @@ void uart_printf(char *message)
     } // while
 } // uart_printf()
 
-uint8_t uart_kbhit(void)
+/*------------------------------------------------------------------
+  Purpose  : This function checks if a character is present in the
+             receive buffer.
+  Variables: -
+  Returns  : 1 if a character is received, 0 otherwise
+  ------------------------------------------------------------------*/
+bool uart_kbhit(void)
 {
-    return UART1_SR_RXNE;   // 1 if char is available
+    return !ring_buffer_is_empty(&ring_buffer_in);
 } // uart_kbhit()
 
-int8_t uart_getc(void)
+/*------------------------------------------------------------------
+  Purpose  : This function reads one data-byte from the uart.	
+  Variables: -
+  Returns  : the data-byte read from the uart
+  ------------------------------------------------------------------*/
+uint8_t uart_getc(void)
 {
-  return (UART1_DR);        // Get it
+    return ring_buffer_get(&ring_buffer_in);
 } // uart_getch()
 

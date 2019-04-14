@@ -6,11 +6,11 @@
 #include "i2c_ds3231.h"
 #include "uart.h"
 
-extern char     rs232_inbuf[];  // RS232 input buffer
-extern uint8_t  rs232_ptr;      // index in RS232 buffer
 extern uint32_t t2_millis;      // Updated in TMR2 interrupt
 
-char bin_clk_ver[] = "Binary Clock v0.1\n";
+char     rs232_inbuf[UART_BUFLEN]; // buffer for RS232 commands
+uint8_t  rs232_ptr     = 0;        // index in RS232 buffer
+char     bin_clk_ver[] = "Binary Clock v0.1\n";
 
 uint8_t led_r[NR_LEDS]; // Array with 8-bit red colour for all WS2812
 uint8_t led_g[NR_LEDS]; // Array with 8-bit green colour for all WS2812

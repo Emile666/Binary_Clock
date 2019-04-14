@@ -2122,6 +2122,9 @@
         <name>$PROJ_DIR$\i2c_ds3231.h</name>
     </file>
     <file>
+        <name>$PROJ_DIR$\ring_buffer.h</name>
+    </file>
+    <file>
         <name>$PROJ_DIR$\scheduler.c</name>
     </file>
     <file>
