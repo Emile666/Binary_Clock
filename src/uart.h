@@ -6,7 +6,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#define UART_BUFLEN (10)
+#define UART_BUFLEN (15)
 #define TX_BUF_SIZE (20)
 #define RX_BUF_SIZE (20)
 
