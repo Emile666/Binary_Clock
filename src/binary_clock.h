@@ -76,6 +76,8 @@
 //-------------------------------------------------
 #define EEP_LED_INTENSITY (0x10)
                          
+void set_colon_leds(uint8_t leds);
+uint8_t get_colon_leds(void);
 void print_date_and_time(void);
 void print_dow(uint8_t dow);
 void execute_single_command(char *s);

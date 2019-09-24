@@ -2,8 +2,8 @@
 #include "binary_clock.h"
 #include "delay.h"
 #include "scheduler.h"
-#include "i2c.h"
-#include "i2c_ds3231.h"
+#include "i2c_bb.h"
+#include "i2c_ds3231_bb.h"
 #include "uart.h"
 #include "eep.h"
 
@@ -34,6 +34,7 @@ __interrupt void TIM2_UPD_OVF_IRQHandler(void)
 {
     scheduler_isr();  // Run scheduler interrupt function
     t2_millis++;      // update milliseconds timer
+    if (!(t2_millis % 250)) set_colon_leds(0x08);
     TIM2_SR1_UIF = 0; // Reset the interrupt otherwise it will fire again straight away.
 } // TIM2_UPD_OVF_IRQHandler()
 
@@ -85,7 +86,7 @@ void setup_output_ports(void)
 {
   PB_ODR     |=  (I2C_SCL | I2C_SDA);   // Must be set here, or I2C will not work
   PB_DDR     |=  (I2C_SCL | I2C_SDA);   // Set as outputs
-  //PB_CR2     |=  (I2C_SCL | I2C_SDA); // Set speed to 10 MHz
+  PB_CR2     &= ~(I2C_SCL | I2C_SDA);   // O: Set speed to 2 MHz, I: disable IRQ
   
   PC_DDR     |= DI_3V3 | LED3 | LED4;   // Set as output
   PC_CR1     |= DI_3V3 | LED3 | LED4;   // Set to Push-Pull
@@ -276,6 +277,7 @@ void pattern_task(void)
 //            else set_colon_leds(0x0C);
 //        }
     } // else
+    set_colon_leds(0x04);
 } // pattern_task()    
         
 /*-----------------------------------------------------------------------------
@@ -301,6 +303,7 @@ void ws2812_task(void)
     __enable_interrupt(); // enable IRQ again
     if (!watchdog_test)   // only refresh when watchdog_test == 0 (X0 command)
         IWDG_KR = IWDG_KR_KEY_REFRESH;   // Refresh watchdog (reset after 500 msec.)
+    set_colon_leds(0x01);
 } // ws2812_task()
 
 /*-----------------------------------------------------------------------------
@@ -323,6 +326,7 @@ void clock_task(void)
     minutes = p.min;
     hours   = p.hour;
     __enable_interrupt();
+    set_colon_leds(0x02);
 } // clock_task()
 
 /*-----------------------------------------------------------------------------
@@ -444,12 +448,12 @@ void execute_single_command(char *s)
 			    uart_printf("I2C-scan: ");
 			    for (i = 0x02; i < 0xff; i+=2)
 			    {
-				if (i2c_start(i) == I2C_ACK)
+				if (i2c_start_bb(i) == I2C_ACK)
 				{
 					sprintf(s2,"0x%x, ",i);
 		  		    	uart_printf(s2);
 				} // if
-				i2c_stop();
+				i2c_stop_bb();
 			    } // for
 			    uart_putc('\n');
                             break;
@@ -531,13 +535,18 @@ void init_watchdog(void)
   ---------------------------------------------------------------------------*/
 int main(void)
 {
+    uint8_t i2c_err;
+	
     __disable_interrupt();
     initialise_system_clock(); // Set system-clock to 16 MHz
     setup_output_ports();      // Init. needed output-ports for LED and keys
     setup_timer2();            // Set Timer 2 to 1 kHz
-    i2c_init();                // Init. I2C-peripheral
+    i2c_err = i2c_reset_bus(); // Init. I2C-peripheral
     uart_init();               // Init. UART-peripheral
     uart_printf(bin_clk_ver);  // Print welcome message
+    uart_printf("i2c_reset_bus:");
+    uart_putc(0x30+i2c_err);
+    uart_putc('\n');
     led_intensity = (uint8_t)eeprom_read_config(EEP_LED_INTENSITY);
     if (!led_intensity)
     {   // First time power-up: eeprom value is 0x00

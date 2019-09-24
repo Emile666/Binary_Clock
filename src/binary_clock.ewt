@@ -2116,16 +2116,16 @@
         <name>$PROJ_DIR$\eep.h</name>
     </file>
     <file>
-        <name>$PROJ_DIR$\i2c.c</name>
+        <name>$PROJ_DIR$\i2c_bb.c</name>
     </file>
     <file>
-        <name>$PROJ_DIR$\i2c.h</name>
+        <name>$PROJ_DIR$\i2c_bb.h</name>
     </file>
     <file>
-        <name>$PROJ_DIR$\i2c_ds3231.c</name>
+        <name>$PROJ_DIR$\i2c_ds3231_bb.c</name>
     </file>
     <file>
-        <name>$PROJ_DIR$\i2c_ds3231.h</name>
+        <name>$PROJ_DIR$\i2c_ds3231_bb.h</name>
     </file>
     <file>
         <name>$PROJ_DIR$\ring_buffer.h</name>
