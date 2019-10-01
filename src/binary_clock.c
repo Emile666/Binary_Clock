@@ -12,6 +12,7 @@ extern uint32_t t2_millis;      // Updated in TMR2 interrupt
 char     rs232_inbuf[UART_BUFLEN]; // buffer for RS232 commands
 uint8_t  rs232_ptr     = 0;        // index in RS232 buffer
 char     bin_clk_ver[] = "Binary Clock v0.1\n";
+uint8_t  sec_leds[6] = {16,13,9,6,2,0};
 
 uint8_t led_r[NR_LEDS]; // Array with 8-bit red colour for all WS2812
 uint8_t led_g[NR_LEDS]; // Array with 8-bit green colour for all WS2812
@@ -22,6 +23,7 @@ uint8_t hours   = 0;
 uint8_t enable_test_pattern = 0; // 1 = enable WS2812 test-pattern
 uint8_t watchdog_test       = 0; // 1 = watchdog test modus
 uint8_t led_intensity;           // Intensity of WS2812 LEDs
+bool    real_binary = false;
 
 /*-----------------------------------------------------------------------------
   Purpose  : This is the interrupt routine for the Timer 2 Overflow handler.
@@ -34,7 +36,8 @@ __interrupt void TIM2_UPD_OVF_IRQHandler(void)
 {
     scheduler_isr();  // Run scheduler interrupt function
     t2_millis++;      // update milliseconds timer
-    if (!(t2_millis % 250)) set_colon_leds(0x08);
+    if (!(t2_millis % 250)) PC_ODR |=  LED4; // LED22 upper-right
+    else                    PC_ODR &= ~LED4;
     TIM2_SR1_UIF = 0; // Reset the interrupt otherwise it will fire again straight away.
 } // TIM2_UPD_OVF_IRQHandler()
 
@@ -123,6 +126,16 @@ void ws2812b_send_byte(uint8_t bt)
     } // for i
 } // ws2812b_send_byte()
 
+void clear_all_leds(void)
+{
+    uint8_t i;
+
+    for (i = 0; i < NR_LEDS; i++)
+    {
+        led_g[i] = led_r[i] = led_b[i] = 0x00;
+    } // for i
+ } // clear_all_leds()
+
 /*-----------------------------------------------------------------------------
   Purpose  : This routine sends a test pattern to all WS2812B LEDs. It is 
              called by pattern_task() every 100 msec.
@@ -170,34 +183,35 @@ void test_pattern(void)
 /*-----------------------------------------------------------------------------
   Purpose: This functions sets or reset the colon leds of the binary clock.
            There are 4 leds and they are coded as:
-                 LED1     LED3
-                LED2     LED4
+                 LED2     LED4
+                LED1     LED3
   Variables: 
        leds: bit 0: LED1 ; bit 1: LED2 ; bit 2: LED3 ; bit 3: LED4
   Returns  : -
   ---------------------------------------------------------------------------*/
 void set_colon_leds(uint8_t leds)
 {
-	if (leds & 0x01) PD_ODR |=  LED1;
-	else             PD_ODR &= ~LED1;
-	if (leds & 0x02) PD_ODR |=  LED2;
-	else             PD_ODR &= ~LED2;
-	if (leds & 0x04) PC_ODR |=  LED3;
-	else             PC_ODR &= ~LED3;
-	if (leds & 0x08) PC_ODR |=  LED4;
-	else             PC_ODR &= ~LED4;
+    if (leds & 0x01) 
+    {
+        if (PD_IDR & LED1) PD_ODR &= ~LED1; // LED24 lower-left
+	else               PD_ODR |=  LED1;
+    } // if
+    if (leds & 0x02) 
+    {
+        if (PD_IDR & LED2) PD_ODR &= ~LED2; // LED25 upper-left
+	else               PD_ODR |=  LED2;
+    } // if
+    if (leds & 0x04) 
+    {
+        if (PC_IDR & LED3) PC_ODR &= ~LED3; // LED21 lower-right
+	else               PC_ODR |=  LED3;
+    } // if
+    if (leds & 0x08) 
+    {
+        if (PC_IDR & LED4) PC_ODR &= ~LED4; // LED22 upper-right
+	else               PC_ODR |=  LED4;
+    } // if
 } // set_colon_leds()
-
-uint8_t get_colon_leds(void)
-{
-    uint8_t retv = 0;
-    
-    if (PD_IDR & LED1) retv |= 0x01;
-    if (PD_IDR & LED2) retv |= 0x02;
-    if (PC_IDR & LED3) retv |= 0x04;
-    if (PC_IDR & LED4) retv |= 0x08;
-    return retv;
-} // get_colon_leds()
 
 /*------------------------------------------------------------------------
   Purpose  : Encode a byte into 2 BCD numbers.
@@ -234,6 +248,22 @@ void pattern_task(void)
     {   // WS2812 test-pattern
 	test_pattern(); 
     } // if
+    else if (real_binary)
+    {
+        for (i = 0; i < 6; i++)
+        {   
+            x = sec_leds[i];
+            if (seconds & (1<<i)) /* seconds in blue, lowest row */
+                 led_b[x] = led_intensity;
+            else led_b[x] = 0x00;
+            if (minutes & (1<<i)) /* minutes green */
+                 led_g[x+1] = led_intensity;
+            else led_g[x+1] = 0x00;
+            if (hours & (1<<i)) /* hours red */
+                 led_r[x+2] = led_intensity;
+            else led_r[x+2] = 0x00;
+        } // for i
+    }
     else
     {
     	x = encode_to_bcd(seconds);
@@ -277,7 +307,6 @@ void pattern_task(void)
 //            else set_colon_leds(0x0C);
 //        }
     } // else
-    set_colon_leds(0x04);
 } // pattern_task()    
         
 /*-----------------------------------------------------------------------------
@@ -303,7 +332,7 @@ void ws2812_task(void)
     __enable_interrupt(); // enable IRQ again
     if (!watchdog_test)   // only refresh when watchdog_test == 0 (X0 command)
         IWDG_KR = IWDG_KR_KEY_REFRESH;   // Refresh watchdog (reset after 500 msec.)
-    set_colon_leds(0x01);
+    //set_colon_leds(0x01); // LED24 lower-left
 } // ws2812_task()
 
 /*-----------------------------------------------------------------------------
@@ -320,13 +349,14 @@ void clock_task(void)
 {
     Time p;
 
+    PC_ODR |= LED3; // LED21 lower-right
     ds3231_gettime(&p);
     __disable_interrupt();
     seconds = p.sec;
     minutes = p.min;
     hours   = p.hour;
     __enable_interrupt();
-    set_colon_leds(0x02);
+    PC_ODR &= ~LED3; // LED21 lower-right
 } // clock_task()
 
 /*-----------------------------------------------------------------------------
@@ -377,7 +407,12 @@ void execute_single_command(char *s)
    
    switch (s[0])
    {
-	case 'd': // Set Date, 1 = Get Date
+	case 'b': // Set real binary mode on of off
+                 real_binary = (num > 0);
+                 clear_all_leds();
+		 break;
+
+        case 'd': // Set Date, 1 = Get Date
 		 switch (num)
 		 {
                     case 0: // Set Date
@@ -465,10 +500,7 @@ void execute_single_command(char *s)
 		 enable_test_pattern = num; // 1 = enable test-pattern
                  if (!num)
                  {  // clear all leds when finished with test-pattern
-                    for (i = 0; i < NR_LEDS; i++)
-                    {
-                        led_g[i] = led_r[i] = led_b[i] = 0x00;
-                    } // for i
+                    clear_all_leds();
                  } // if
 		 break;
 
