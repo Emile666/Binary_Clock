@@ -1,4 +1,4 @@
-//
+//==================================================================
 //  This program shows how you can output a message on the UART on
 //	the STM8S microcontroller.
 //
@@ -6,7 +6,7 @@
 //  copy of this licence can be found at:
 //
 //  http://creativecommons.org/licenses/by-sa/3.0/legalcode
-//
+//==================================================================
 #include <stdio.h>
 #include "delay.h"
 #include "uart.h"
@@ -129,7 +129,7 @@ void uart_init(void)
   ------------------------------------------------------------------*/
 void uart_putc(uint8_t ch)
 {    
-    // At 19200 Baud, sending 1 byte takes a max. of 0.52 msec.
+    // At 115200 Baud, sending 1 byte takes a max. of 90 usec.
     while (ring_buffer_is_full(&ring_buffer_out)) delay_msec(1);
     __disable_interrupt(); // Disable interrupts to get exclusive access to ring_buffer_out
     if (ring_buffer_is_empty(&ring_buffer_out))

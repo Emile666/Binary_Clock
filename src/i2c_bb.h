@@ -1,27 +1,24 @@
+#ifndef _I2C_BB_H
+#define _I2C_BB_H
 /*==================================================================
    File Name    : i2c_bb.h
    Author       : Emile
   ------------------------------------------------------------------
-  Purpose : This files contains the generic I2C related functions 
-            for the STM8 uC. It is needed for every I2C device
-			connected to the STM8 uC.
+  Purpose : This is the header file for i2c_bb.c
   ------------------------------------------------------------------
   This is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
   the Free Software Foundation, either version 3 of the License, or
   (at your option) any later version.
  
-  This software is distributed in the hope that it will be useful,
+  This file is distributed in the hope that it will be useful,
   but WITHOUT ANY WARRANTY; without even the implied warranty of
   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
   GNU General Public License for more details.
  
   You should have received a copy of the GNU General Public License
-  along with this software.  If not, see <http://www.gnu.org/licenses/>.
+  along with this file.  If not, see <http://www.gnu.org/licenses/>.
   ================================================================== */ 
-#ifndef _I2C_BB_H
-#define _I2C_BB_H
-
 #include <iostm8s103f3.h>
 #include <stdbool.h>
 #include <intrinsics.h> 

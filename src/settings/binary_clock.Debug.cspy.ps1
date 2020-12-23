@@ -23,9 +23,9 @@ param([String]$debugfile = "");
 
 if ($debugfile -eq "")
 {
-& "C:\Program Files (x86)\IAR Systems\Embedded Workbench 8.0\common\bin\cspybat" -f "D:\ownCloud\Programming\Binary_Clock\src\settings\binary_clock.Debug.general.xcl" --backend -f "D:\ownCloud\Programming\Binary_Clock\src\settings\binary_clock.Debug.driver.xcl" 
+& "C:\Program Files (x86)\IAR Systems\Embedded Workbench 8.0\common\bin\cspybat" -f "D:\nextcloud\Programming\Binary_Clock\src\settings\binary_clock.Debug.general.xcl" --backend -f "D:\nextcloud\Programming\Binary_Clock\src\settings\binary_clock.Debug.driver.xcl" 
 }
 else
 {
-& "C:\Program Files (x86)\IAR Systems\Embedded Workbench 8.0\common\bin\cspybat" -f "D:\ownCloud\Programming\Binary_Clock\src\settings\binary_clock.Debug.general.xcl" --debug_file=$debugfile --backend -f "D:\ownCloud\Programming\Binary_Clock\src\settings\binary_clock.Debug.driver.xcl" 
+& "C:\Program Files (x86)\IAR Systems\Embedded Workbench 8.0\common\bin\cspybat" -f "D:\nextcloud\Programming\Binary_Clock\src\settings\binary_clock.Debug.general.xcl" --debug_file=$debugfile --backend -f "D:\nextcloud\Programming\Binary_Clock\src\settings\binary_clock.Debug.driver.xcl" 
 }

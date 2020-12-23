@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <ctype.h>
 
 //-----------------------------------------------------------------------------------------------
@@ -63,6 +64,7 @@
 // For the binary clock, this is a total of 20
 //-------------------------------------------------
 #define NR_LEDS (20)                    
+#define LED_INTENSITY (0x10) /* initial value for LED intensity */
 
 //-------------------------------------------------
 // Constants for the independent watchdog (IWDG)
@@ -72,14 +74,22 @@
 #define IWDG_KR_KEY_ACCESS  (0x55)
 
 //-------------------------------------------------
-// Constants for the Eeprom
+// Constants for EEPROM
 //-------------------------------------------------
-#define EEP_LED_INTENSITY (0x10)
+#define EEP_ADDR_INTENSITY  (0x10) /* LED intensity */
+#define EEP_ADDR_DST_ACTIVE (0x12) /* 1 = Day-light Savings Time active */
+#define EEP_ADDR_BBEGIN_H   (0x14) /* Blanking begin-time hours */
+#define EEP_ADDR_BBEGIN_M   (0x16) /* Blanking begin-time minutes */
+#define EEP_ADDR_BEND_H     (0x18) /* Blanking end-time hours */
+#define EEP_ADDR_BEND_M     (0x1A) /* Blanking end-time minutes */
                          
-void    set_colon_leds(uint8_t leds);
-void    print_date_and_time(void);
-void    print_dow(uint8_t dow);
-void    execute_single_command(char *s);
-void    rs232_command_handler(void);
+void     set_colon_leds(uint8_t leds);
+void     print_date_and_time(void);
+void     print_dow(uint8_t dow);
+uint16_t cmin(uint8_t h, uint8_t m);
+bool     blanking_active(void);
+void     check_and_set_summertime(void);
+void     execute_single_command(char *s);
+void     rs232_command_handler(void);
 
 #endif

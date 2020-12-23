@@ -11,19 +11,23 @@ extern uint32_t t2_millis;      // Updated in TMR2 interrupt
 
 char     rs232_inbuf[UART_BUFLEN]; // buffer for RS232 commands
 uint8_t  rs232_ptr     = 0;        // index in RS232 buffer
-char     bin_clk_ver[] = "Binary Clock v0.1\n";
+char     bin_clk_ver[] = "Binary Clock v0.30\n";
 uint8_t  sec_leds[6] = {16,13,9,6,2,0};
 
 uint8_t led_r[NR_LEDS]; // Array with 8-bit red colour for all WS2812
 uint8_t led_g[NR_LEDS]; // Array with 8-bit green colour for all WS2812
 uint8_t led_b[NR_LEDS]; // Array with 8-bit blue colour for all WS2812
-uint8_t seconds = 0;
-uint8_t minutes = 0;
-uint8_t hours   = 0;
 uint8_t enable_test_pattern = 0; // 1 = enable WS2812 test-pattern
 uint8_t watchdog_test       = 0; // 1 = watchdog test modus
 uint8_t led_intensity;           // Intensity of WS2812 LEDs
+bool    dst_active          = false; // true = Daylight Saving Time active
+Time    dt;             // Struct with time and date values, updated every sec.
 bool    real_binary = false;
+
+uint8_t blank_begin_h  = 23;
+uint8_t blank_begin_m  = 30;
+uint8_t blank_end_h    =  8;
+uint8_t blank_end_m    = 30;
 
 /*-----------------------------------------------------------------------------
   Purpose  : This is the interrupt routine for the Timer 2 Overflow handler.
@@ -36,8 +40,6 @@ __interrupt void TIM2_UPD_OVF_IRQHandler(void)
 {
     scheduler_isr();  // Run scheduler interrupt function
     t2_millis++;      // update milliseconds timer
-    if (!(t2_millis % 250)) PC_ODR |=  LED4; // LED22 upper-right
-    else                    PC_ODR &= ~LED4;
     TIM2_SR1_UIF = 0; // Reset the interrupt otherwise it will fire again straight away.
 } // TIM2_UPD_OVF_IRQHandler()
 
@@ -126,6 +128,11 @@ void ws2812b_send_byte(uint8_t bt)
     } // for i
 } // ws2812b_send_byte()
 
+/*-----------------------------------------------------------------------------
+  Purpose  : This routine clears all WS2812B LEDs.
+  Variables: -
+  Returns  : -
+  ---------------------------------------------------------------------------*/
 void clear_all_leds(void)
 {
     uint8_t i;
@@ -155,7 +162,7 @@ void test_pattern(void)
             case 0: 
                 for (i = 0; i < NR_LEDS; i++)
                 {
-                    led_b[i] = 0x10;
+                    led_b[i] = led_intensity;
                     led_g[i] = led_r[i] = 0x00;
                 } // for
                 cntr_b = 1; // next colour
@@ -163,16 +170,16 @@ void test_pattern(void)
             case 1: 
                 for (i = 0; i < NR_LEDS; i++)
                 {
+                    led_g[i] = led_intensity;
                     led_b[i] = led_r[i] = 0x00;
-                    led_g[i] = 0x10;
                 } // for
                 cntr_b = 2;
                 break;
             case 2: 
                 for (i = 0; i < NR_LEDS; i++)
                 {
+                    led_r[i] = led_intensity;
                     led_b[i] = led_g[i] = 0x00;
-                    led_r[i] = 0x10;
                 } // for
                 cntr_b = 0;
                 break;
@@ -242,70 +249,63 @@ uint8_t encode_to_bcd(uint8_t x)
 void pattern_task(void)
 {
     uint8_t x,i;
-    //static uint8_t colon_tmr = 0;
     
     if (enable_test_pattern)
     {   // WS2812 test-pattern
 	test_pattern(); 
     } // if
-    else if (real_binary)
-    {
-        for (i = 0; i < 6; i++)
-        {   
-            x = sec_leds[i];
-            if (seconds & (1<<i)) /* seconds in blue, lowest row */
-                 led_b[x] = led_intensity;
-            else led_b[x] = 0x00;
-            if (minutes & (1<<i)) /* minutes green */
-                 led_g[x+1] = led_intensity;
-            else led_g[x+1] = 0x00;
-            if (hours & (1<<i)) /* hours red */
-                 led_r[x+2] = led_intensity;
-            else led_r[x+2] = 0x00;
+    else 
+    {   
+        for (i = 0; i < NR_LEDS; i++)
+        {
+            led_g[i] = led_r[i] = led_b[i] = 0;
         } // for i
-    }
-    else
-    {
-    	x = encode_to_bcd(seconds);
-    	for (i = 0; i <= 3; i++)
-    	{   // 4 bits seconds LSB: LED 16-19
-        	if (x & (1<<i)) led_b[i+16] = led_intensity;
-        	else            led_b[i+16] = 0x00;
-    	} // for i
-    	for (i = 4; i <= 6; i++)
-    	{   // 3 bits seconds MSB: LED 13-15
-        	if (x & (1<<i)) led_b[i+9] = led_intensity;
-        	else            led_b[i+9] = 0x00;
-    	} // for i
-    	x = encode_to_bcd(minutes);
-    	for (i = 0; i <= 3; i++)
-    	{   // 4 bits minutes LSB: LED 09-12
-    	    if (x & (1<<i)) led_g[i+9] = led_intensity;
-    	    else            led_g[i+9] = 0x00;
-    	} // for i
-    	for (i = 4; i <= 6; i++)
-    	{   // 3 bits minutes MSB: LED 06-08
-    	    if (x & (1<<i)) led_g[i+2] = led_intensity;
-    	    else            led_g[i+2] = 0x00;
-    	} // for i
-    	x = encode_to_bcd(hours);
-    	for (i = 0; i <= 3; i++)
-    	{   // 4 bits hours LSB: LED 02-05
-    	    if (x & (1<<i)) led_r[i+2] = led_intensity;
-    	    else            led_r[i+2] = 0x00;
-    	} // for i
-    	for (i = 4; i <= 5; i++)
-    	{   // 4 bits hours MSB: LED 00-01
-    	    if (x & (1<<i)) led_r[i-4] = led_intensity;
-    	    else            led_r[i-4] = 0x00;
-    	} // for i
-//        if (++colon_tmr == 5)
-//        {
-//            colon_tmr = 0;
-//            if (get_colon_leds() == 0x0C)
-//                 set_colon_leds(0x03);
-//            else set_colon_leds(0x0C);
-//        }
+        if (blanking_active()) return;
+        // check summertime change every minute
+        if (dt.sec == 0) check_and_set_summertime(); 
+        if (real_binary)
+        {
+            for (i = 0; i < 6; i++)
+            {   
+                x = sec_leds[i];
+                if (dt.sec & (1<<i)) /* seconds in blue, lowest row */
+                     led_b[x] = led_intensity;
+                if (dt.min & (1<<i)) /* minutes green */
+                     led_g[x+1] = led_intensity;
+                if (dt.hour & (1<<i)) /* hours red */
+                     led_r[x+2] = led_intensity;
+            } // for i
+        } // if
+        else
+        {
+            x = encode_to_bcd(dt.sec);
+            for (i = 0; i <= 3; i++)
+            {   // 4 bits seconds LSB: LED 16-19
+                    if (x & (1<<i)) led_b[i+16] = led_intensity;
+            } // for i
+            for (i = 4; i <= 6; i++)
+            {   // 3 bits seconds MSB: LED 13-15
+                    if (x & (1<<i)) led_b[i+9] = led_intensity;
+            } // for i
+            x = encode_to_bcd(dt.min);
+            for (i = 0; i <= 3; i++)
+            {   // 4 bits minutes LSB: LED 09-12
+                if (x & (1<<i)) led_g[i+9] = led_intensity;
+            } // for i
+            for (i = 4; i <= 6; i++)
+            {   // 3 bits minutes MSB: LED 06-08
+                if (x & (1<<i)) led_g[i+2] = led_intensity;
+            } // for i
+            x = encode_to_bcd(dt.hour);
+            for (i = 0; i <= 3; i++)
+            {   // 4 bits hours LSB: LED 02-05
+                if (x & (1<<i)) led_r[i+2] = led_intensity;
+            } // for i
+            for (i = 4; i <= 5; i++)
+            {   // 4 bits hours MSB: LED 00-01
+                if (x & (1<<i)) led_r[i-4] = led_intensity;
+            } // for i
+        } // else
     } // else
 } // pattern_task()    
         
@@ -335,6 +335,106 @@ void ws2812_task(void)
     //set_colon_leds(0x01); // LED24 lower-left
 } // ws2812_task()
 
+/*------------------------------------------------------------------------
+Purpose  : This task is called every minute by pattern_task(). It checks 
+           for a change from summer- to wintertime and vice-versa.
+           To start DST: Find the last Sunday in March  : @2 AM advance clock to 3 AM.
+           To stop DST : Find the last Sunday in October: @3 AM set clock back to 2 AM (only once!).
+Variables: p: pointer to time-struct
+Returns  : -
+------------------------------------------------------------------------*/
+void check_and_set_summertime(void)
+{
+    uint8_t        hr,day,lsun03,lsun10,dst_eep;
+    static uint8_t advance_time = 0;
+    static uint8_t revert_time  = 0;
+#ifdef DEBUG_SENSORS
+    char           s[20];
+#endif
+    
+    if (dt.mon == 3)
+    {
+        day    = ds3231_calc_dow(31,3,dt.year); // Find day-of-week for March 31th
+        lsun03 = 31 - (day % 7);                // Find last Sunday in March
+#ifdef DEBUG_SENSORS
+        sprintf(s,"lsun03=%d\n",lsun03); 
+        uart_printf(s);
+#endif
+        switch (advance_time)
+        {
+        case 0: if ((dt.day == lsun03) && (dt.hour == 2) && (dt.min == 0))
+                {   // At 2:00 AM advance time to 3 AM, check for one minute
+                    advance_time = 1;
+                } // if
+                else if (dt.day < lsun03) dst_active = false;
+                else if (dt.day > lsun03) dst_active = true;
+                else if (dt.hour < 2)     dst_active = false;
+                break;
+        case 1: // Now advance time, do this only once
+             ds3231_settime(3,0,dt.sec); // Set time to 3:00, leave secs the same
+             advance_time = 2;
+             dst_active   = true;
+             eeprom_write_config(EEP_ADDR_DST_ACTIVE,0x01); // set DST in eeprom
+             break;
+        case 2: 
+             if (dt.min > 0) advance_time = 0; // At 3:01:00 back to normal
+             dst_active = true;
+        break;
+        } // switch
+    } // if
+    else if (dt.mon == 10)
+    {
+        day    = ds3231_calc_dow(31,10,dt.year); // Find day-of-week for October 31th
+        lsun10 = 31 - (day % 7);                 // Find last Sunday in October
+#ifdef DEBUG_SENSORS
+        sprintf(s,"lsun10=%d\n",lsun10); 
+        uart_printf(s);
+#endif
+        switch (revert_time)
+        {
+        case 0: if ((dt.day == lsun10) && (dt.hour == 3) && (dt.min == 0))
+        {   // At 3:00 AM revert time back to 2 AM, check for one minute
+            revert_time = 1;
+        } // if
+        else if (dt.day > lsun10) dst_active = false;
+        else if (dt.day < lsun10) dst_active = true;
+        else if (dt.hour < 3)     dst_active = true;
+        break;
+        case 1: // Now revert time, do this only once
+            ds3231_settime(2,0,dt.sec); // Set time back to 2:00, leave secs the same
+            revert_time = 2;
+            dst_active  = false;
+            eeprom_write_config(EEP_ADDR_DST_ACTIVE,0x00); // reset DST in eeprom
+            break;
+        case 2: // make sure we passed 3 AM in order to prevent multiple reverts
+            if (dt.hour > 3) revert_time = 0; // at 4:00:00 back to normal
+            dst_active = false;
+            break;
+        } // switch
+    } // else if
+    else if ((dt.mon < 3) || (dt.mon > 10)) dst_active = false;
+    else                                    dst_active = true;
+
+    //------------------------------------------------------------------------
+    // If, for some reason, the clock was powered-off during the change to
+    // summer- or winter-time, the eeprom value differs from the actual 
+    // dst_active value. If so, set the actual sommer- and winter-time.
+    //------------------------------------------------------------------------
+    dst_eep = (uint8_t)eeprom_read_config(EEP_ADDR_DST_ACTIVE);
+    if (dst_active && !dst_eep)
+    {   // It is summer-time, but clock has not been advanced yet
+        hr = (dt.hour >= 23) ? 0 : dt.hour + 1;
+        ds3231_settime(hr,dt.min,dt.sec); // Set summer-time to 1 hour later
+        eeprom_write_config(EEP_ADDR_DST_ACTIVE,0x01); // set DST in eeprom
+    } // if
+    else if (!dst_active && dst_eep)
+    {   // It is winter-time, but clock has not been moved back yet
+        hr = (dt.hour > 0) ? dt.hour - 1 : 23;
+        ds3231_settime(hr,dt.min,dt.sec); // Set summer-time to 1 hour earlier
+        eeprom_write_config(EEP_ADDR_DST_ACTIVE,0x00); // set DST in eeprom
+    } // if
+} // check_and_set_summertime()
+
 /*-----------------------------------------------------------------------------
   Purpose  : This routine reads the date and time info from the DS3231 RTC and
              stores this info into the global variables seconds, minutes and
@@ -347,16 +447,7 @@ void ws2812_task(void)
   ---------------------------------------------------------------------------*/
 void clock_task(void)
 {
-    Time p;
-
-    PC_ODR |= LED3; // LED21 lower-right
-    ds3231_gettime(&p);
-    __disable_interrupt();
-    seconds = p.sec;
-    minutes = p.min;
-    hours   = p.hour;
-    __enable_interrupt();
-    PC_ODR &= ~LED3; // LED21 lower-right
+    ds3231_gettime(&dt);
 } // clock_task()
 
 /*-----------------------------------------------------------------------------
@@ -381,14 +472,44 @@ void print_dow(uint8_t dow)
 void print_date_and_time(void)
 {
     char s2[40]; // Used for printing to UART
-    Time p;
-    
-    ds3231_gettime(&p);
     uart_printf("DS3231: ");
-    print_dow(p.dow);
-    sprintf(s2," %d-%d-%d, %d:%d.%d\n",p.date,p.mon,p.year,p.hour,p.min,p.sec);
+    check_and_set_summertime();
+    sprintf(s2," %d-%d-%d, %d:%d.%d",
+               dt.day , dt.mon, dt.year,
+               dt.hour, dt.min, dt.sec);
+    uart_printf(s2);
+    sprintf(s2," dow:%d, dst:%d, blanking:%d\n",
+               dt.dow, dst_active, blanking_active());
     uart_printf(s2);
 } // print_date_and_time()
+
+/*------------------------------------------------------------------------
+  Purpose  : This function converts hours and minutes to minutes.
+  Variables: h  : hours of actual time
+             min: minutes of actual time
+  Returns  : time in minutes
+  ------------------------------------------------------------------------*/
+uint16_t cmin(uint8_t h, uint8_t m)
+{
+    return (uint16_t)h * 60 + m;
+} // cmin()
+
+/*------------------------------------------------------------------------
+  Purpose  : This function decides if the current time falls between the
+             blanking time for the LEDs.
+  Variables: -
+  Returns  : true: blanking is true, false: no blanking
+  ------------------------------------------------------------------------*/
+bool blanking_active(void)
+{
+	uint16_t x = cmin(dt.hour      , dt.min);
+	uint16_t b = cmin(blank_begin_h, blank_begin_m);
+	uint16_t e = cmin(blank_end_h  , blank_end_m);
+	
+	// (b>=e): Example: 23:30 and 05:30, active if x>=b OR  x<=e
+	// (b< e): Example: 02:30 and 05:30, active if x>=b AND x<=e
+	return (b >= e) && ((x >= b) || (x <= e)) || ((x >= b) && (x < e)); 
+} // blanking_active()
 
 /*-----------------------------------------------------------------------------
   Purpose: interpret commands which are received via the USB serial terminal:
@@ -401,9 +522,11 @@ void execute_single_command(char *s)
    uint8_t  num  = atoi(&s[1]); // convert number in command (until space is found)
    char     s2[40]; // Used for printing to RS232 port
    char     *s1;
-   uint8_t  d,m;
+   uint8_t  d,m,h,sec;
    uint16_t i,y;
    int16_t  temp;
+   const char sep[] = ":-.";
+   
    
    switch (s[0])
    {
@@ -416,44 +539,73 @@ void execute_single_command(char *s)
 		 switch (num)
 		 {
                     case 0: // Set Date
-			    s1 = strtok(&s[3],":-");
+			    s1 = strtok(&s[3],sep);
                             d  = atoi(s1);
-                            s1 = strtok(NULL ,":-");
+                            s1 = strtok(NULL ,sep);
                             m  = atoi(s1);
-                            s1 = strtok(NULL ,":-");
+                            s1 = strtok(NULL ,sep);
                             y  = atoi(s1);
                             uart_printf("Date: ");
-                            print_dow(ds3231_calc_dow(d,m,y));
-                            sprintf(s2," %d-%d-%d\n",d,m,y);
+                            sprintf(s2,"Date: %d-%d-%d\n",d,m,y);
                             uart_printf(s2);
                             ds3231_setdate(d,m,y); // write to DS3231 IC
                             break;
                     case 1: // Set Time
-                            s1      = strtok(&s[3],":-.");
-                            hours   = atoi(s1);
-                            s1      = strtok(NULL ,":-.");
-                            minutes = atoi(s1);
-                            s1      = strtok(NULL ,":-.");
-                            seconds = atoi(s1);
-                            sprintf(s2,"Time: %d:%d:%d\n",hours,minutes,seconds);
+                            s1      = strtok(&s[3],sep);
+                            h       = atoi(s1);
+                            s1      = strtok(NULL ,sep);
+                            m       = atoi(s1);
+                            s1      = strtok(NULL ,sep);
+                            sec     = atoi(s1);
+                            sprintf(s2,"Time: %d:%d:%d\n",h,m,sec);
                             uart_printf(s2);
-                            ds3231_settime(hours,minutes,seconds); // write to DS3231 IC
+                            ds3231_settime(h,m,sec); // write to DS3231 IC
                             break;
                     case 2: // Get Date & Time
                             print_date_and_time(); 
+                            sprintf(s2,"Blanking: %d:%d - %d:%d\n",
+                                       blank_begin_h, blank_begin_m,
+                                       blank_end_h  , blank_end_m);
+                            uart_printf(s2);
                             break;
                     case 3: // Get Temperature
                             temp = ds3231_gettemp();
-                            sprintf(s2,"DS3231: %d.",temp>>2);
+                            sprintf(s2,"DS3231: %d/4\n",temp);
                             uart_printf(s2);
-                            switch (temp & 0x03)
-                            {
-				case 0: uart_printf("00 C\n"); break;
-				case 1: uart_printf("25 C\n"); break;
-				case 2: uart_printf("50 C\n"); break;
-				case 3: uart_printf("75 C\n"); break;
-                            } // switch
+//                            switch (temp & 0x03)
+//                            {
+//				case 0: uart_printf("00 C\n"); break;
+//				case 1: uart_printf("25 C\n"); break;
+//				case 2: uart_printf("50 C\n"); break;
+//				case 3: uart_printf("75 C\n"); break;
+//                            } // switch
                             break;
+                    case 4: // Set Start-Time for blanking Nixies
+                            s1 = strtok(&s[3],sep);
+                            h  = atoi(s1);
+                            s1 = strtok(NULL ,sep);
+                            m  = atoi(s1);
+                            if ((h < 24) && (m < 60))
+                            {
+                                blank_begin_h = h;
+                                blank_begin_m = m;
+                                eeprom_write_config(EEP_ADDR_BBEGIN_H,blank_begin_h);
+                                eeprom_write_config(EEP_ADDR_BBEGIN_M,blank_begin_m);
+                            } // if
+                            break;
+                    case 5: // Set End-Time for blanking Nixies
+                            s1 = strtok(&s[3],sep);
+                            h  = atoi(s1);
+                            s1 = strtok(NULL ,sep);
+                            m  = atoi(s1);
+                            if ((h < 24) && (m < 60))
+                            {
+                                blank_end_h = h;
+                                blank_end_m = m;
+                                eeprom_write_config(EEP_ADDR_BEND_H,blank_end_h);
+                                eeprom_write_config(EEP_ADDR_BEND_M,blank_end_m);
+                            } // if
+                            break;		 
                    default: break;
                  } // switch
                  break;
@@ -462,13 +614,13 @@ void execute_single_command(char *s)
 		 if (num > 0)
                  {
                      led_intensity = num;
-                     eeprom_write_config(EEP_LED_INTENSITY,led_intensity);
+                     eeprom_write_config(EEP_ADDR_INTENSITY,led_intensity);
                  } // if
 		 break;
 
-	case 'l': // Switch colon leds
-		 set_colon_leds(num);
-		 break;
+//	case 'l': // Switch colon leds
+//		 set_colon_leds(num);
+//		 break;
 
 	case 's': // System commands
 		 switch (num)
@@ -579,12 +731,21 @@ int main(void)
     uart_printf("i2c_reset_bus:");
     uart_putc(0x30+i2c_err);
     uart_putc('\n');
-    led_intensity = (uint8_t)eeprom_read_config(EEP_LED_INTENSITY);
+    led_intensity = (uint8_t)eeprom_read_config(EEP_ADDR_INTENSITY);
     if (!led_intensity)
     {   // First time power-up: eeprom value is 0x00
-        led_intensity = 0x10;
-        eeprom_write_config(EEP_LED_INTENSITY,led_intensity);
+        led_intensity = LED_INTENSITY;
+        eeprom_write_config(EEP_ADDR_INTENSITY,led_intensity);
+        eeprom_write_config(EEP_ADDR_INTENSITY,led_intensity);
+        eeprom_write_config(EEP_ADDR_BBEGIN_H,blank_begin_h);
+        eeprom_write_config(EEP_ADDR_BBEGIN_M,blank_begin_m);
+        eeprom_write_config(EEP_ADDR_BEND_H  ,blank_end_h);
+        eeprom_write_config(EEP_ADDR_BEND_M  ,blank_end_m);
     } // if
+    blank_begin_h = (uint8_t)eeprom_read_config(EEP_ADDR_BBEGIN_H);
+    blank_begin_m = (uint8_t)eeprom_read_config(EEP_ADDR_BBEGIN_M);
+    blank_end_h   = (uint8_t)eeprom_read_config(EEP_ADDR_BEND_H);
+    blank_end_m   = (uint8_t)eeprom_read_config(EEP_ADDR_BEND_M);
     
     // Initialise all tasks for the scheduler
     scheduler_init();                          // clear task_list struct

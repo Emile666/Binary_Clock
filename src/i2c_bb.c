@@ -2,20 +2,23 @@
   File Name    : i2c_bb.c
   Author       : Emile
   ------------------------------------------------------------------
-  Purpose : This files contains the I2C related functions for the STM8 uC.
+  Purpose : This files contains the I2C related functions for the STM8.
+            It uses I2C bit-banging instead of the I2C module inside
+            the STM8, because it is just too complex and very difficult
+            to get fault-free under all circumstances.
   ------------------------------------------------------------------
-  This is free software: you can redistribute it and/or modify
+  This file is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
   the Free Software Foundation, either version 3 of the License, or
   (at your option) any later version.
  
-  This is distributed in the hope that it will be useful,
+  This file is distributed in the hope that it will be useful,
   but WITHOUT ANY WARRANTY; without even the implied warranty of
   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
   GNU General Public License for more details.
  
   You should have received a copy of the GNU General Public License
-  along with CHESS_STM8S105. If not, see <http://www.gnu.org/licenses/>.
+  along with this file. If not, see <http://www.gnu.org/licenses/>.
   ==================================================================
 */ 
 #include "i2c_bb.h"
@@ -44,7 +47,7 @@ void i2c_delay_5usec(uint16_t x)
   Returns  : 0 if bus cleared
              1 if SCL held low, 
              2 if SDA held low by slave clock strecht for > 2 seconds
-			 3 if SDA held low after 20 clocks
+	     3 if SDA held low after 20 clocks
   ---------------------------------------------------------------------------*/
 uint8_t i2c_reset_bus(void)
 {

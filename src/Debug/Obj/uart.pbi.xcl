@@ -1,4 +1,4 @@
-"D:\ownCloud\Programming\Binary_Clock\src\uart.c"
+"D:\nextcloud\Programming\Binary_Clock\src\uart.c"
 -std=c99
 -ferror-limit=0
 -I

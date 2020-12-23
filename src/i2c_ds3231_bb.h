@@ -1,9 +1,10 @@
+#ifndef _I2C_DS3231_BB_H
+#define _I2C_DS3231_BB_H
 /*==================================================================
   File Name    : i2c_ds3231_bb.h
   Author       : Emile
   ------------------------------------------------------------------
-  Purpose : This files contains the DS3231 related functions.
-            The DS3231 is a Real-Time Clock (RTC).
+  Purpose : This is the header-file for i2c_ds3231.c
   ------------------------------------------------------------------
   This is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -16,12 +17,9 @@
   GNU General Public License for more details.
  
   You should have received a copy of the GNU General Public License
-  along with this software. If not, see <http://www.gnu.org/licenses/>.
+  along with this file. If not, see <http://www.gnu.org/licenses/>.
   ==================================================================
 */ 
-#ifndef _I2C_DS3231_BB_H
-#define _I2C_DS3231_BB_H
-
 #include <stdbool.h>
 #include <stdint.h>
       
@@ -47,7 +45,7 @@ typedef struct _Time
     uint8_t	hour;
     uint8_t	min;
     uint8_t	sec;
-    uint8_t	date;
+    uint8_t	day;
     uint8_t	mon;
     uint16_t	year;
     uint8_t	dow;

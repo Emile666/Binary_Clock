@@ -4,8 +4,11 @@
   ------------------------------------------------------------------
   Purpose : This files contains the DS3231 related functions.
             The DS3231 is a Real-Time Clock (RTC).
+            It uses I2C bit-banging instead of the I2C module inside
+            the STM8, because it is just too complex and very difficult
+            to get fault-free under all circumstances.
   ------------------------------------------------------------------
-  This is free software: you can redistribute it and/or modify
+  This file is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
   the Free Software Foundation, either version 3 of the License, or
   (at your option) any later version.
@@ -16,7 +19,7 @@
   GNU General Public License for more details.
  
   You should have received a copy of the GNU General Public License
-  along with this software. If not, see <http://www.gnu.org/licenses/>.
+  along with this file. If not, see <http://www.gnu.org/licenses/>.
   ==================================================================
 */ 
 #include "i2c_bb.h"
@@ -102,7 +105,7 @@ bool ds3231_gettime(Time *p)
             buf     = i2c_read_bb(I2C_ACK);  // Read DOW register
             p->dow  = buf;    
             buf     = i2c_read_bb(I2C_ACK);  // Read DAY register
-            p->date = ds3231_decode(buf);
+            p->day  = ds3231_decode(buf);
             buf     = i2c_read_bb(I2C_ACK);  // Read MONTH register
             p->mon  = ds3231_decode(buf);
             buf     = i2c_read_bb(I2C_NACK); // Read YEAR register
@@ -132,7 +135,7 @@ uint8_t ds3231_calc_dow(uint8_t date, uint8_t mon, uint16_t year)
 	+ ((year + 4800L - ((14 - mon) / 12)) / 400)
 	- 32044L;
         JND = JND % 7;
-        if (JND == 0) JND = 7;
+        if (JND == 0) JND = SUNDAY;
 	return JND;
 } // ds3231_calc_dow()
 
@@ -153,7 +156,7 @@ void ds3231_setdate(uint8_t date, uint8_t mon, uint16_t year)
 
 void ds3231_setdow(uint8_t dow)
 {
-	if ((dow > 0) && (dow < 8))
+	if ((dow >= MONDAY) && (dow <= SUNDAY))
 		ds3231_write_register(REG_DOW, dow);
 } // ds3231_setdow() 
 

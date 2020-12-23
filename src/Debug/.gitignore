@@ -1,0 +1,6 @@
+#ignore all files!
+Obj/*.*
+List/*.*
+
+#except for these...
+!.gitignore
