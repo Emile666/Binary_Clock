@@ -1,3 +1,40 @@
+//-----------------------------------------------------------------------------
+// Created: 17-03-2019
+// Author : Emile
+// File   : binary_clock.c
+//-----------------------------------------------------------------------------
+// Revision 0.31  2021/03/29 Emile
+// - Bugfix: check_and_set_summertime() was not called when blanking was active.
+//   This is corrected, check_and_set_summertime() now called every minute.
+//
+// Revision 0.30  2020/12/23 Emile
+// - Daylight-Savings function added (check_and_set_summertime)
+// - Blanking function added (blanking_active) with timers (D4 begin and D5 end)
+//   and stored in eeprom
+// - File headers added when not present yet
+//
+// Revision 0.25  2019/10/01 Emile
+// - Option for Real-binary added (command b1)
+//
+// Revision 0.24  2019/05/16 Emile
+// - Bugfix: UART_BUFLEN too small for D1 command. Set to 15 (from 10)
+//
+// Revision 0.23  2019/04/14 Emile
+// - WS2812 led intensity command added + storage in eeprom
+// - UART now interrupt driven
+//
+// Revision 0.22  2019/04/12 Emile
+// - All leds off after W0 command (test_pattern off)
+//
+// Revision 0.21  2019/04/08 Emile
+// - Watchdog IWDG enabled + d<x> command now the same as for Nixie clock
+//
+// Revision 0.20  2019/03/29 Emile
+// - First working version for binary_clock
+//
+// Revision 0.10  2019/03/17 Emile
+// - Project copy from Ring_Clock project
+//-----------------------------------------------------------------------------
 #include <iostm8s103f3.h>
 #include "binary_clock.h"
 #include "delay.h"
@@ -11,7 +48,7 @@ extern uint32_t t2_millis;      // Updated in TMR2 interrupt
 
 char     rs232_inbuf[UART_BUFLEN]; // buffer for RS232 commands
 uint8_t  rs232_ptr     = 0;        // index in RS232 buffer
-char     bin_clk_ver[] = "Binary Clock v0.30\n";
+char     bin_clk_ver[] = "Binary Clock v0.31\n";
 uint8_t  sec_leds[6] = {16,13,9,6,2,0};
 
 uint8_t led_r[NR_LEDS]; // Array with 8-bit red colour for all WS2812
@@ -260,9 +297,9 @@ void pattern_task(void)
         {
             led_g[i] = led_r[i] = led_b[i] = 0;
         } // for i
-        if (blanking_active()) return;
         // check summertime change every minute
         if (dt.sec == 0) check_and_set_summertime(); 
+        if (blanking_active()) return;
         if (real_binary)
         {
             for (i = 0; i < 6; i++)
