@@ -3,6 +3,10 @@
 // Author : Emile
 // File   : binary_clock.c
 //-----------------------------------------------------------------------------
+// Revision 0.32  2021/03/30 Emile
+// - Bugfix: time was reset at power-up: dt struct not initialized
+// - Blanking begin and end the same now disables blanking
+//
 // Revision 0.31  2021/03/29 Emile
 // - Bugfix: check_and_set_summertime() was not called when blanking was active.
 //   This is corrected, check_and_set_summertime() now called every minute.
@@ -44,11 +48,11 @@
 #include "uart.h"
 #include "eep.h"
 
-extern uint32_t t2_millis;      // Updated in TMR2 interrupt
+extern   uint32_t t2_millis;       // Updated in TMR2 interrupt
 
 char     rs232_inbuf[UART_BUFLEN]; // buffer for RS232 commands
 uint8_t  rs232_ptr     = 0;        // index in RS232 buffer
-char     bin_clk_ver[] = "Binary Clock v0.31\n";
+char     bin_clk_ver[] = "Binary Clock v0.32\n";
 uint8_t  sec_leds[6] = {16,13,9,6,2,0};
 
 uint8_t led_r[NR_LEDS]; // Array with 8-bit red colour for all WS2812
@@ -543,9 +547,10 @@ bool blanking_active(void)
 	uint16_t b = cmin(blank_begin_h, blank_begin_m);
 	uint16_t e = cmin(blank_end_h  , blank_end_m);
 	
-	// (b>=e): Example: 23:30 and 05:30, active if x>=b OR  x<=e
-	// (b< e): Example: 02:30 and 05:30, active if x>=b AND x<=e
-	return (b >= e) && ((x >= b) || (x <= e)) || ((x >= b) && (x < e)); 
+	// (b > e): Example: 23:30 and 05:30, active if x>=b OR  x<=e
+	// (b < e): Example: 02:30 and 05:30, active if x>=b AND x<=e
+	return ((b > e) && ((x >= b) || (x <= e))) || 
+               ((b < e) && ((x >= b) && (x < e))); 
 } // blanking_active()
 
 /*-----------------------------------------------------------------------------
@@ -783,12 +788,14 @@ int main(void)
     blank_begin_m = (uint8_t)eeprom_read_config(EEP_ADDR_BBEGIN_M);
     blank_end_h   = (uint8_t)eeprom_read_config(EEP_ADDR_BEND_H);
     blank_end_m   = (uint8_t)eeprom_read_config(EEP_ADDR_BEND_M);
-    
+    ds3231_gettime(&dt);   // Read time from DS3231 RTC
+    print_date_and_time(); // and output to UART
+
     // Initialise all tasks for the scheduler
     scheduler_init();                          // clear task_list struct
-    add_task(pattern_task, "PTRN"  , 0,  100); // every 100 msec.
-    add_task(ws2812_task , "WS2812",50,  100); // every 100 msec.
-    add_task(clock_task  , "CLK"   ,80, 1000); // every second
+    add_task(clock_task  , "CLK"   ,10, 1000); // every second
+    add_task(pattern_task, "PTRN"  ,40,  100); // every 100 msec.
+    add_task(ws2812_task , "WS2812",70,  100); // every 100 msec.
     init_watchdog();                           // init. the IWDG watchdog
     __enable_interrupt();
 
