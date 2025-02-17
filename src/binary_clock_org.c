@@ -48,21 +48,11 @@
 #include "uart.h"
 #include "eep.h"
 
-//-----------------------------------------------------------------------
-// States for esp8266_std in clock_task()
-//-----------------------------------------------------------------------
-#define ESP8266_INIT    (0) /* Default state */
-#define ESP8266_UPDATE  (1) /* Update time from ESP8266 NTP Server */
-
-#define ESP8266_HOURS   (12) /* Time in hours between updates from ESP8266 */
-#define ESP8266_MINUTES (ESP8266_HOURS * 60)
-#define ESP8266_SECONDS ((uint16_t)ESP8266_HOURS * 3600)
-
 extern   uint32_t t2_millis;       // Updated in TMR2 interrupt
 
 char     rs232_inbuf[UART_BUFLEN]; // buffer for RS232 commands
 uint8_t  rs232_ptr     = 0;        // index in RS232 buffer
-char     bin_clk_ver[] = "Binary Clock v0.33\n";
+char     bin_clk_ver[] = "Binary Clock v0.32\n";
 uint8_t  sec_leds[6] = {16,13,9,6,2,0};
 
 uint8_t led_r[NR_LEDS]; // Array with 8-bit red colour for all WS2812
@@ -79,11 +69,6 @@ uint8_t blank_begin_h  = 23;
 uint8_t blank_begin_m  = 30;
 uint8_t blank_end_h    =  8;
 uint8_t blank_end_m    = 30;
-
-bool     last_esp8266   = false; // true = last esp8266 command was successful
-uint8_t  esp8266_std    = ESP8266_INIT; // update time from ESP8266 every 18 hours
-uint16_t esp8266_tmr    = 0;     // timer for updating ESP8266
-bool     set_col_white  = false; // true = esp8266 time update was successful
 
 /*-----------------------------------------------------------------------------
   Purpose  : This is the interrupt routine for the Timer 2 Overflow handler.
@@ -152,8 +137,6 @@ void setup_output_ports(void)
   PC_DDR     |= DI_3V3 | LED3 | LED4;   // Set as output
   PC_CR1     |= DI_3V3 | LED3 | LED4;   // Set to Push-Pull
   PC_ODR     &= ~(DI_3V3 | LED3| LED4); // Turn off outputs
-  PC_DDR     &= ~IR_RCV;                // Set as input
-  PC_CR1     |=  IR_RCV;                // Pull-up
   
   PD_DDR     |= TX | LED1 | LED2;       // Set as output
   PD_CR1     |= TX | LED1 | LED2;       // Set to Push-Pull
@@ -244,6 +227,39 @@ void test_pattern(void)
         } // switch
     } // if
 } // test_pattern()
+
+/*-----------------------------------------------------------------------------
+  Purpose: This functions sets or reset the colon leds of the binary clock.
+           There are 4 leds and they are coded as:
+                 LED2     LED4
+                LED1     LED3
+  Variables: 
+       leds: bit 0: LED1 ; bit 1: LED2 ; bit 2: LED3 ; bit 3: LED4
+  Returns  : -
+  ---------------------------------------------------------------------------*/
+void set_colon_leds(uint8_t leds)
+{
+    if (leds & 0x01) 
+    {
+        if (PD_IDR & LED1) PD_ODR &= ~LED1; // LED24 lower-left
+	else               PD_ODR |=  LED1;
+    } // if
+    if (leds & 0x02) 
+    {
+        if (PD_IDR & LED2) PD_ODR &= ~LED2; // LED25 upper-left
+	else               PD_ODR |=  LED2;
+    } // if
+    if (leds & 0x04) 
+    {
+        if (PC_IDR & LED3) PC_ODR &= ~LED3; // LED21 lower-right
+	else               PC_ODR |=  LED3;
+    } // if
+    if (leds & 0x08) 
+    {
+        if (PC_IDR & LED4) PC_ODR &= ~LED4; // LED22 upper-right
+	else               PC_ODR |=  LED4;
+    } // if
+} // set_colon_leds()
 
 /*------------------------------------------------------------------------
   Purpose  : Encode a byte into 2 BCD numbers.
@@ -473,23 +489,6 @@ void check_and_set_summertime(void)
 void clock_task(void)
 {
     ds3231_gettime(&dt);
-    switch (esp8266_std)
-    {
-    case ESP8266_INIT:
-        if (++esp8266_tmr >= ESP8266_SECONDS) // 12 hours * 60 min. * 60 sec.
-           esp8266_std = ESP8266_UPDATE;
-        break;
-    case ESP8266_UPDATE:
-        last_esp8266 = false; // reset status
-        esp8266_tmr  = 0;
-        esp8266_std  = ESP8266_INIT;
-        uart_printf("e0\n");  // update time from ESP8266
-        break;
-    default: 
-        esp8266_tmr = 0;
-        esp8266_std = ESP8266_INIT;
-        break;
-    } // switch
 } // clock_task()
 
 /*-----------------------------------------------------------------------------
@@ -567,7 +566,9 @@ void execute_single_command(char *s)
    char     *s1;
    uint8_t  d,m,h,sec;
    uint16_t i,y;
+   int16_t  temp;
    const char sep[] = ":-.";
+   
    
    switch (s[0])
    {
@@ -609,6 +610,18 @@ void execute_single_command(char *s)
                                        blank_end_h  , blank_end_m);
                             uart_printf(s2);
                             break;
+                    case 3: // Get Temperature
+                            temp = ds3231_gettemp();
+                            sprintf(s2,"DS3231: %d/4\n",temp);
+                            uart_printf(s2);
+//                            switch (temp & 0x03)
+//                            {
+//				case 0: uart_printf("00 C\n"); break;
+//				case 1: uart_printf("25 C\n"); break;
+//				case 2: uart_printf("50 C\n"); break;
+//				case 3: uart_printf("75 C\n"); break;
+//                            } // switch
+                            break;
                     case 4: // Set Start-Time for blanking Nixies
                             s1 = strtok(&s[3],sep);
                             h  = atoi(s1);
@@ -639,51 +652,17 @@ void execute_single_command(char *s)
                  } // switch
                  break;
   
-        case 'e': // The e commands are responses back from the ESP8266 NTP Server
-                  // Possible response: "e0 26-05-2021.15:55:23"
-		 switch (num)
-		 {
-                 case 0: // E0 = Get Date & Time from the ESP8266
-                    s1 = strtok(&s[3],sep); // day
-                    s1 = strtok(NULL ,sep); // month
-                    s1 = strtok(NULL ,sep); // year
-                    y  = atoi(s1);
-                    // Second part is the time from the ESP8266
-                    s1 = strtok(NULL,sep); // hours
-                    h  = atoi(s1);
-                    if (dst_active)
-                    {
-                        if (h == 23) 
-                             h = 0;
-                        else h++;
-                    } // if
-                    s1  = strtok(NULL ,sep); // minutes
-                    m   = atoi(s1);
-                    s1  = strtok(NULL ,sep); // seconds
-                    sec = atoi(s1);
-                    if (sec == 59) // add 1 second for the transmit delay
-                         sec = 0;
-                    else sec++;
-                    if (y > 2020)
-                    {   // Valid Date & Time received
-                        ds3231_setdate(d,m,y);   // write to DS3231 IC
-                        ds3231_settime(h,m,sec); // write to DS3231 IC
-                        last_esp8266 = true;     // response was successful
-                        set_col_white = true;    // show briefly on display
-                        esp8266_tmr = 0;         // Reset update timer
-                    } // if
-                    else last_esp8266 = false;   // response not successful
-                    break;
-                 } // switch
-                 break;
-
-        case 'i': // Set intensity of WS2812 LEDs between 1..255
+	case 'i': // Set intensity of WS2812 LEDs between 1..255
 		 if (num > 0)
                  {
                      led_intensity = num;
                      eeprom_write_config(EEP_ADDR_INTENSITY,led_intensity);
                  } // if
 		 break;
+
+//	case 'l': // Switch colon leds
+//		 set_colon_leds(num);
+//		 break;
 
 	case 's': // System commands
 		 switch (num)
